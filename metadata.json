@@ -1,0 +1,6 @@
+{
+  "name": "ERP OSIS SMK Tridharma Gorontalo",
+  "description": "Sistem ERP Administrasi OSIS Terpadu SMK Tridharma Gorontalo - Portal Publik, Control Room, Presensi Geofencing, Generator Surat .docx, & Manajemen Organisasi",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
