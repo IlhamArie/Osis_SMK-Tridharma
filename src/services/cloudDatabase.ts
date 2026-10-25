@@ -216,8 +216,14 @@ CREATE POLICY "Akses Publik ERP OSIS"
   USING (true) 
   WITH CHECK (true);
 
--- 4. Aktifkan Realtime Replication (Opsional agar sinkron langsung)
-ALTER PUBLICATION supabase_realtime ADD TABLE public.osis_sync_store;
+-- 4. Aktifkan Realtime Replication secara aman (kebal error bila sudah terdaftar)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.osis_sync_store;
+EXCEPTION
+  WHEN duplicate_object THEN
+    NULL;
+END $$;
 
 -- Selesai! Tabel siap digunakan secara otomatis oleh sistem ERP OSIS.
 `;

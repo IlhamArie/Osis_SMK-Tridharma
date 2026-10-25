@@ -211,11 +211,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             {onOpenVercelGuide && (
               <button
                 onClick={onOpenVercelGuide}
-                className="hidden lg:flex items-center gap-1.5 min-h-[40px] px-3 py-2 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-xl transition-all border border-sky-200 active:scale-95"
+                className="flex items-center gap-1.5 min-h-[40px] px-2.5 sm:px-3 py-2 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-xl transition-all border border-sky-300 shadow-xs active:scale-95"
                 title="Panduan Hosting Vercel & Database Cloud Gratis (Tanpa Koding)"
               >
                 <Cloud className="w-4 h-4 text-sky-600" />
-                <span>Hosting & Cloud DB</span>
+                <span className="hidden sm:inline">Hosting & Cloud DB</span>
+                <span className="sm:hidden">Cloud DB</span>
               </button>
             )}
 
