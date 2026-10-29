@@ -53,7 +53,8 @@ import {
   AlertOctagon,
   BellRing,
   ExternalLink,
-  Users
+  Users,
+  Cloud
 } from 'lucide-react';
 
 interface PortalPengurusProps {
@@ -72,6 +73,7 @@ interface PortalPengurusProps {
   onSwitchUser: (user: UserAccount) => void;
   onLogout: () => void;
   onOpenPublicPortal: () => void;
+  onOpenVercelGuide?: () => void;
 }
 
 export const PortalPengurus: React.FC<PortalPengurusProps> = ({
@@ -90,6 +92,7 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
   onSwitchUser,
   onLogout,
   onOpenPublicPortal,
+  onOpenVercelGuide,
 }) => {
   const identity = schoolIdentity || INITIAL_SCHOOL_IDENTITY;
   const currentSekbids = sekbidList && sekbidList.length > 0 ? sekbidList : OSIS_SEKBID_LIST;
@@ -385,7 +388,7 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
                 if (found) onSwitchUser(found);
               }}
               className="min-h-[38px] text-xs bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[145px] sm:max-w-none truncate"
-              title="Ganti Akun Demo"
+              title="Beralih Akun Pengurus"
             >
               {allAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -393,6 +396,18 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
                 </option>
               ))}
             </select>
+
+            {onOpenVercelGuide && (
+              <button
+                type="button"
+                onClick={onOpenVercelGuide}
+                className="min-h-[38px] px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-sky-300 hover:text-white bg-sky-950/70 hover:bg-sky-900 rounded-xl border border-sky-800/80 transition-all flex items-center gap-1.5 active:scale-95"
+                title="Panduan Hosting Vercel & Database Cloud Gratis"
+              >
+                <Cloud className="w-4 h-4 text-sky-400" />
+                <span className="hidden sm:inline">Database Cloud</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenPublicPortal}

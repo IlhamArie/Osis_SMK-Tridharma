@@ -553,35 +553,47 @@ export default function App() {
   // Khusus hanya untuk melakukan Presensi Geofencing GPS & Update Hasil Proker
   if (appMode === 'dashboard' && !isExecutiveUser && currentUser) {
     return (
-      <PortalPengurus
-        currentUser={currentUser}
-        allAccounts={accounts}
-        orgMembers={orgMembers}
-        sekbidList={sekbidList}
-        schoolIdentity={schoolIdentity}
-        prokerList={prokerList}
-        presensiList={presensiList}
-        currentGeoConfig={schoolGeoConfig}
-        jadwalPiket={jadwalPiket}
-        agendaSekretaris={agendaSekretaris}
-        onAddPresensi={(record) => {
-          const newRec: PresensiRecord = {
-            ...record,
-            id: `prs-${Date.now()}`,
-          };
-          setPresensiList([newRec, ...presensiList]);
-        }}
-        onUpdateProker={(updPrk) => {
-          setProkerList(prokerList.map((p) => (p.id === updPrk.id ? updPrk : p)));
-        }}
-        onSwitchUser={(user) => {
-          setCurrentUser(user);
-        }}
-        onLogout={() => {
-          setAppMode('public');
-        }}
-        onOpenPublicPortal={() => setAppMode('public')}
-      />
+      <>
+        <PortalPengurus
+          currentUser={currentUser}
+          allAccounts={accounts}
+          orgMembers={orgMembers}
+          sekbidList={sekbidList}
+          schoolIdentity={schoolIdentity}
+          prokerList={prokerList}
+          presensiList={presensiList}
+          currentGeoConfig={schoolGeoConfig}
+          jadwalPiket={jadwalPiket}
+          agendaSekretaris={agendaSekretaris}
+          onAddPresensi={(record) => {
+            const newRec: PresensiRecord = {
+              ...record,
+              id: `prs-${Date.now()}`,
+            };
+            setPresensiList([newRec, ...presensiList]);
+          }}
+          onUpdateProker={(updPrk) => {
+            setProkerList(prokerList.map((p) => (p.id === updPrk.id ? updPrk : p)));
+          }}
+          onSwitchUser={(user) => {
+            setCurrentUser(user);
+          }}
+          onLogout={() => {
+            setAppMode('public');
+          }}
+          onOpenPublicPortal={() => setAppMode('public')}
+          onOpenVercelGuide={() => setShowVercelGuideModal(true)}
+        />
+
+        {showVercelGuideModal && (
+          <VercelDatabaseGuideModal
+            isOpen={showVercelGuideModal}
+            onClose={() => setShowVercelGuideModal(false)}
+            onExportAllData={handleExportAllData}
+            onImportData={handleImportData}
+          />
+        )}
+      </>
     );
   }
 
