@@ -30,7 +30,11 @@ import {
   Briefcase,
   FolderPlus,
   Settings,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check,
+  Printer,
+  QrCode
 } from 'lucide-react';
 
 interface ControlRoomJendela1Props {
@@ -78,7 +82,7 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
   const [searchMemberQuery, setSearchMemberQuery] = useState('');
   const [selectedAccountToFill, setSelectedAccountToFill] = useState<string>('');
 
-  // Form New Account State
+  // Form New Account State (Dioptimalkan: Cukup Nama, Kelas, Jabatan -> Username & Password Otomatis)
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -88,6 +92,14 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
   const [jabatan, setJabatan] = useState('');
   const [kelas, setKelas] = useState('');
   const [telepon, setTelepon] = useState('');
+  const [createdAccountCard, setCreatedAccountCard] = useState<{
+    fullName: string;
+    kelas: string;
+    jabatan: string;
+    username: string;
+    password: string;
+  } | null>(null);
+  const [copiedAccountWa, setCopiedAccountWa] = useState(false);
 
   // Form Org Member State
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -228,31 +240,124 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
     }
   };
 
-  // Submit Account
+  // Helper Otomatis: Membuat Username & Password Unik dari Nama Siswa
+  const generateAutoCredentials = (name: string) => {
+    const parts = name.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().split(/\s+/);
+    let autoUser = 'pengurus';
+    if (parts.length === 1 && parts[0]) {
+      autoUser = parts[0];
+    } else if (parts.length >= 2) {
+      autoUser = `${parts[0]}.${parts[1]}`;
+    }
+
+    // Pastikan tidak tabrakan dengan akun lain
+    let finalUser = autoUser;
+    let counter = 1;
+    while (accounts.some((a) => a.username.toLowerCase() === finalUser.toLowerCase())) {
+      finalUser = `${autoUser}${counter}`;
+      counter++;
+    }
+
+    const rand = Math.floor(100 + Math.random() * 900);
+    const autoPass = `tri${rand}`;
+    return { autoUser: finalUser, autoPass };
+  };
+
+  const inferRoleFromJabatan = (jbt: string): UserRole => {
+    const lower = jbt.toLowerCase();
+    if (lower.includes('ketua') && !lower.includes('wakil')) return 'ketua';
+    if (lower.includes('wakil')) return 'wakil';
+    if (lower.includes('sekretaris')) return 'sekretaris';
+    if (lower.includes('bendahara')) return 'bendahara';
+    if (lower.includes('sekbid') || lower.includes('koordinator')) return 'sekbid';
+    return 'anggota';
+  };
+
+  const handleFullNameChange = (newName: string) => {
+    setFullName(newName);
+    if (newName.trim().length >= 2) {
+      const { autoUser, autoPass } = generateAutoCredentials(newName);
+      setUsername(autoUser);
+      if (!password) {
+        setPassword(autoPass);
+      }
+    }
+  };
+
+  const handleOpenAddAccount = () => {
+    setFullName('');
+    setKelas('XI RPL 1');
+    setJabatan('Koordinator Sekbid 1 (Ketaqwaan)');
+    setUsername('');
+    const rand = Math.floor(100 + Math.random() * 900);
+    setPassword(`tri${rand}`);
+    setShowAddAccountModal(true);
+  };
+
+  // Submit Account - Otomatis Buat Akun & Sambungkan ke Struktur Organisasi
   const handleCreateAccount = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim() || !fullName.trim()) return;
+    if (!fullName.trim() || !kelas.trim() || !jabatan.trim()) return;
 
+    const creds = generateAutoCredentials(fullName);
+    const finalUser = username.trim() || creds.autoUser;
+    const finalPass = password.trim() || creds.autoPass;
+    const finalRole = inferRoleFromJabatan(jabatan);
+
+    // 1. Simpan Akun Login
     onAddAccount({
-      username: username.trim().toLowerCase(),
-      password: password.trim(),
+      username: finalUser.toLowerCase(),
+      password: finalPass,
       fullName: fullName.trim(),
       nisn: nisn.trim() || '0000000000',
-      role,
-      jabatan: jabatan.trim() || 'Pengurus OSIS',
-      kelas: kelas.trim() || 'SMK Tridharma',
+      role: finalRole,
+      jabatan: jabatan.trim(),
+      kelas: kelas.trim(),
       telepon: telepon.trim() || '-',
       isActive: true,
     });
 
+    // 2. Otomatis daftarkan juga ke Bagan Struktur Organisasi jika belum ada
+    const alreadyInOrg = orgMembers.some(
+      (m) => m.nama.toLowerCase() === fullName.trim().toLowerCase()
+    );
+    if (!alreadyInOrg) {
+      const isSekbidRole = finalRole === 'sekbid' || jabatan.toLowerCase().includes('sekbid');
+      const isKoord = jabatan.toLowerCase().includes('koordinator');
+      const matchNum = jabatan.match(/sekbid\s*(\d+)/i) || jabatan.match(/bidang\s*(\d+)/i);
+      const parsedSekbidNo = matchNum ? parseInt(matchNum[1], 10) : undefined;
+      const matchedSekbid = parsedSekbidNo ? currentSekbids.find((s) => s.nomor === parsedSekbidNo) : undefined;
+
+      onAddOrgMember({
+        nama: fullName.trim(),
+        jabatan: jabatan.trim(),
+        kategori: isSekbidRole ? (isKoord ? 'sekbid' : 'anggota_sekbid') : (['ketua', 'wakil', 'sekretaris', 'bendahara'].includes(finalRole) ? 'bph' : 'sekbid'),
+        kelas: kelas.trim(),
+        fotoUrl: VOCATIONAL_IMAGE_PRESETS[Math.floor(Math.random() * 8) + 8].url,
+        urutan: orgMembers.length + 1,
+        kontak: telepon.trim() || '-',
+        visiSingkat: 'Pengurus aktif OSIS SMK Tridharma Gorontalo.',
+        sekbidNomor: parsedSekbidNo,
+        sekbidNama: matchedSekbid?.nama,
+        peranSekbid: isKoord ? 'koordinator' : 'anggota',
+      });
+    }
+
     setShowAddAccountModal(false);
+    // Tampilkan Kartu Hasil Akun Baru
+    setCreatedAccountCard({
+      fullName: fullName.trim(),
+      kelas: kelas.trim(),
+      jabatan: jabatan.trim(),
+      username: finalUser.toLowerCase(),
+      password: finalPass,
+    });
+
+    setFullName('');
+    setKelas('');
+    setJabatan('');
     setUsername('');
     setPassword('');
-    setFullName('');
-    setNisn('');
-    setJabatan('');
-    setKelas('');
-    setTelepon('');
   };
 
   const handleOpenAddMember = (
@@ -452,7 +557,7 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
             </div>
 
             <button
-              onClick={() => setShowAddAccountModal(true)}
+              onClick={handleOpenAddAccount}
               className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors shadow-xs"
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -1183,141 +1288,323 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
         />
       )}
 
-      {/* Modal Add Account */}
+      {/* Modal Add Account - Disederhanakan khusus Pembina: Cukup Nama, Kelas, & Jabatan */}
       {showAddAccountModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-indigo-600" />
-                <span>Pendaftaran Akun Pengurus Baru</span>
-              </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Input Pengurus Baru</h3>
+                  <p className="text-xs text-slate-500">Cukup masukkan Nama, Kelas & Jabatan. Username & Password dibuat otomatis.</p>
+                </div>
+              </div>
               <button
+                type="button"
                 onClick={() => setShowAddAccountModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateAccount} className="space-y-3.5 text-xs">
+            <form onSubmit={handleCreateAccount} className="space-y-4 text-xs">
+              {/* Field 1: Nama Lengkap Siswa */}
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Nama Lengkap Siswa</label>
+                <label className="block font-semibold text-slate-800 mb-1.5 flex items-center justify-between">
+                  <span>1. Nama Lengkap Siswa</span>
+                  <span className="text-[10px] text-indigo-600 font-normal">Wajib diisi</span>
+                </label>
                 <input
                   type="text"
                   required
+                  autoFocus
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e) => handleFullNameChange(e.target.value)}
                   placeholder="Contoh: Mohamad Rivaldo Daud"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Username Login</label>
-                  <input
-                    type="text"
-                    required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="rivaldo.daud"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Password Awal</label>
-                  <input
-                    type="text"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Kombinasi sandi"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Hak Akses (Role)</label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="ketua">Ketua Umum OSIS</option>
-                    <option value="wakil">Wakil Ketua OSIS</option>
-                    <option value="sekretaris">Sekretaris OSIS</option>
-                    <option value="bendahara">Bendahara OSIS</option>
-                    <option value="sekbid">Koordinator Sekbid</option>
-                    <option value="anggota">Anggota Pengurus</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">NISN</label>
-                  <input
-                    type="text"
-                    value={nisn}
-                    onChange={(e) => setNisn(e.target.value)}
-                    placeholder="0078912345"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-mono focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
+              {/* Field 2: Kelas / Jurusan */}
               <div>
-                <label className="block font-medium text-slate-700 mb-1">Jabatan Spesifik</label>
+                <label className="block font-semibold text-slate-800 mb-1.5 flex items-center justify-between">
+                  <span>2. Kelas / Jurusan Siswa</span>
+                  <span className="text-[10px] text-slate-500">Pilih cepat atau ketik</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={kelas}
+                  onChange={(e) => setKelas(e.target.value)}
+                  placeholder="Contoh: XI RPL 1 atau X TKJ 2"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium mb-2"
+                />
+                {/* Chip Pilihan Cepat Kelas SMK Tridharma */}
+                <div className="flex flex-wrap gap-1.5">
+                  {['X RPL 1', 'X TKJ 1', 'X TKR 1', 'XI RPL 1', 'XI TKJ 1', 'XI TKR 1', 'XI AKL 1', 'XII RPL 1', 'XII TKJ 1'].map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setKelas(k)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                        kelas === k
+                          ? 'bg-indigo-600 text-white font-semibold'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Field 3: Jabatan Organisasi */}
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1.5 flex items-center justify-between">
+                  <span>3. Jabatan Organisasi OSIS</span>
+                  <span className="text-[10px] text-slate-500">Pilih dari daftar atau ketik bebas</span>
+                </label>
                 <input
                   type="text"
                   required
                   value={jabatan}
                   onChange={(e) => setJabatan(e.target.value)}
-                  placeholder="Contoh: Koordinator Sekbid 5 (Demokrasi & HAM)"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
+                  placeholder="Contoh: Koordinator Sekbid 1 (Ketaqwaan) atau Anggota"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium mb-2"
                 />
+                {/* Quick Selection Dropdown / Buttons */}
+                <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setJabatan('Ketua Umum OSIS')}
+                    className="text-left px-2.5 py-1.5 rounded-lg text-[11px] hover:bg-white hover:shadow-xs transition-colors text-slate-700 font-medium"
+                  >
+                    👑 Ketua Umum OSIS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJabatan('Wakil Ketua OSIS')}
+                    className="text-left px-2.5 py-1.5 rounded-lg text-[11px] hover:bg-white hover:shadow-xs transition-colors text-slate-700 font-medium"
+                  >
+                    🤝 Wakil Ketua OSIS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJabatan('Sekretaris Umum OSIS')}
+                    className="text-left px-2.5 py-1.5 rounded-lg text-[11px] hover:bg-white hover:shadow-xs transition-colors text-slate-700 font-medium"
+                  >
+                    📝 Sekretaris Umum
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setJabatan('Bendahara Umum OSIS')}
+                    className="text-left px-2.5 py-1.5 rounded-lg text-[11px] hover:bg-white hover:shadow-xs transition-colors text-slate-700 font-medium"
+                  >
+                    💰 Bendahara Umum
+                  </button>
+                  {currentSekbids.map((s) => (
+                    <button
+                      key={s.nomor}
+                      type="button"
+                      onClick={() => setJabatan(`Koordinator Sekbid ${s.nomor} (${s.singkatan})`)}
+                      className="text-left px-2.5 py-1.5 rounded-lg text-[11px] hover:bg-white hover:shadow-xs transition-colors text-slate-700"
+                    >
+                      🎯 Sekbid {s.nomor}: {s.singkatan}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">Kelas / Jurusan</label>
-                  <input
-                    type="text"
-                    required
-                    value={kelas}
-                    onChange={(e) => setKelas(e.target.value)}
-                    placeholder="XI TKJ 1"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
-                  />
+              {/* LIVE PREVIEW: KREDENSIAL LOGIN OTOMATIS */}
+              <div className="bg-gradient-to-br from-indigo-50 via-slate-50 to-purple-50 rounded-2xl p-4 border border-indigo-100/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-indigo-900 font-bold text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Kredensial Dihasilkan Otomatis Oleh Sistem</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (fullName) {
+                        const { autoUser, autoPass } = generateAutoCredentials(fullName);
+                        setUsername(autoUser);
+                        setPassword(autoPass);
+                      } else {
+                        const rand = Math.floor(100 + Math.random() * 900);
+                        setPassword(`tri${rand}`);
+                      }
+                    }}
+                    title="Buat Ulang Sandi Acak"
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold underline"
+                  >
+                    Acak Ulang Sandi
+                  </button>
                 </div>
-                <div>
-                  <label className="block font-medium text-slate-700 mb-1">No. WhatsApp</label>
-                  <input
-                    type="text"
-                    value={telepon}
-                    onChange={(e) => setTelepon(e.target.value)}
-                    placeholder="0812xxxx"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
-                  />
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">👤 Username Login</span>
+                    <span className="font-mono font-bold text-sm text-indigo-700 break-all">
+                      {username || (fullName ? generateAutoCredentials(fullName).autoUser : 'nama.siswa')}
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-2.5 rounded-xl border border-indigo-100">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">🔑 Password Masuk</span>
+                    <span className="font-mono font-bold text-sm text-emerald-700">
+                      {password || 'tri482'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                  <span>Hak Akses Sistem Terdeteksi:</span>
+                  <span className="font-semibold text-slate-700 uppercase px-2 py-0.5 bg-white rounded-md border border-slate-200">
+                    {inferRoleFromJabatan(jabatan)}
+                  </span>
                 </div>
               </div>
 
-              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAddAccountModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition-colors"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2"
                 >
-                  Simpan Akun
+                  <Sparkles className="w-4 h-4" />
+                  <span>Simpan & Buat Akun Otomatis</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KARTU KREDENSIAL BERHASIL DIBUAT (KIRIM WHATSAPP / PRINT) */}
+      {createdAccountCard && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-2 shadow-xs">
+                <CheckCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Akun Pengurus Siap Digunakan!</h3>
+              <p className="text-xs text-slate-500">
+                Data login telah dibuat otomatis dan terdaftar di sistem ERP OSIS SMK Tridharma.
+              </p>
+            </div>
+
+            {/* Kartu Fisik Kredensial */}
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow-lg border border-indigo-800/40 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">SMK TRIDHARMA GORONTALO</div>
+                  <div className="text-xs font-semibold text-slate-200">Kartu Akses Pengurus OSIS</div>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  AKTIF
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div>
+                  <div className="text-[10px] text-slate-400">Nama Pengurus:</div>
+                  <div className="font-bold text-sm text-white">{createdAccountCard.fullName}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="text-[10px] text-slate-400">Kelas / Jurusan:</div>
+                    <div className="font-semibold text-slate-200">{createdAccountCard.kelas}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-400">Jabatan:</div>
+                    <div className="font-semibold text-indigo-200 line-clamp-1">{createdAccountCard.jabatan}</div>
+                  </div>
+                </div>
+
+                <div className="bg-black/30 p-2.5 rounded-xl border border-white/10 grid grid-cols-2 gap-2 mt-2">
+                  <div>
+                    <div className="text-[10px] text-slate-400">👤 Username:</div>
+                    <div className="font-mono font-bold text-indigo-300 text-xs select-all">
+                      {createdAccountCard.username}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-400">🔑 Password:</div>
+                    <div className="font-mono font-bold text-emerald-300 text-xs select-all">
+                      {createdAccountCard.password}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tombol Bagikan WhatsApp & Tutup */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const message = 
+`📢 *AKUN RESMI PORTAL OSIS SMK TRIDHARMA GORONTALO*
+
+Halo *${createdAccountCard.fullName}* (${createdAccountCard.kelas}),
+Selamat atas amanah sebagai *${createdAccountCard.jabatan}*!
+
+Berikut data akun Anda untuk masuk ke Portal Pengurus:
+🌐 *Website Portal:* ${window.location.origin}
+👤 *Username:* ${createdAccountCard.username}
+🔑 *Password:* ${createdAccountCard.password}
+
+Silakan buka situs di atas, pilih *Portal Pengurus*, masukkan username & password tersebut untuk melakukan presensi scan QR Pembina dan mengakses tugas kerja Anda.
+
+_Pembina OSIS SMK Tridharma Gorontalo_`;
+
+                  navigator.clipboard.writeText(message);
+                  setCopiedAccountWa(true);
+                  setTimeout(() => setCopiedAccountWa(false), 3000);
+                }}
+                className={`w-full py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                  copiedAccountWa
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20'
+                }`}
+              >
+                {copiedAccountWa ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Tersalin! Siap Ditempel ke WhatsApp Siswa</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>Salin Format Teks Kirim ke WhatsApp Siswa</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatedAccountCard(null);
+                  setCopiedAccountWa(false);
+                }}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors"
+              >
+                Selesai & Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

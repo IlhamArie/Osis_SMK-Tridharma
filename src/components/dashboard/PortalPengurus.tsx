@@ -54,8 +54,10 @@ import {
   BellRing,
   ExternalLink,
   Users,
-  Cloud
+  Cloud,
+  QrCode
 } from 'lucide-react';
+import { PresensiQrScannerModal } from './PresensiQrScannerModal';
 
 interface PortalPengurusProps {
   currentUser: UserAccount;
@@ -148,6 +150,7 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
   const [showSimulators, setShowSimulators] = useState<boolean>(false);
   const [showCustomDetails, setShowCustomDetails] = useState<boolean>(false);
   const [forceShowForm, setForceShowForm] = useState<boolean>(false);
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState<boolean>(false);
 
   // Dynamic distance calculation against Pembina's active location
   const evaluation = isWithinSchoolRadius(
@@ -243,6 +246,51 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
     }
 
     setTimeout(() => setPresensiSuccessToast(null), 6000);
+  };
+
+  // Handler Sukses Scan QR Pembina
+  const handleQrScanSuccess = (payload: { jenis: string; token: string; pembina: string; rawPayload: any }) => {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = formattedWitaTime;
+
+    let statusFinal: PresensiRecord['status'];
+    if (!isValidRadius) {
+      statusFinal = 'Di Luar Radius';
+    } else if (tardinessInfo.isTerlambat) {
+      statusFinal = 'Hadir Valid (Terlambat)';
+    } else {
+      statusFinal = 'Hadir Valid (Tepat Waktu)';
+    }
+
+    const recordedJenis = (['Kehadiran Sekolah & Piket', 'Apel Pagi / Upacara', 'Rapat Rutin', 'Kepanitiaan'].includes(payload.jenis) 
+      ? payload.jenis 
+      : 'Kehadiran Sekolah & Piket') as PresensiRecord['jenis'];
+
+    onAddPresensi({
+      userId: currentUser.id,
+      namaPengurus: currentUser.fullName,
+      jabatan: currentUser.jabatan,
+      tanggal: dateStr,
+      waktu: timeStr,
+      jenis: recordedJenis,
+      latitude: currentLat,
+      longitude: currentLng,
+      jarakMeter: currentDistance,
+      status: statusFinal,
+      keterangan: `Terverifikasi Scan QR Resmi Pembina (${payload.token})`,
+      akurasiMeter: 4,
+      isTerlambat: tardinessInfo.isTerlambat,
+      menitKeterlambatan: tardinessInfo.menitKeterlambatan,
+      waktuBatas: '07:15 WITA',
+      metodeVerifikasi: 'Scan QR Pembina',
+      qrToken: payload.token,
+    });
+
+    setPresensiSuccessToast(
+      `🎉 Presensi BERHASIL DIVERIFIKASI lewat SCAN QR RESMI PEMBINA! (${timeStr} - ${recordedJenis})`
+    );
+    setTimeout(() => setPresensiSuccessToast(null), 7000);
   };
 
   // Filter Presensi khusus pengurus yang login
@@ -642,6 +690,46 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
                           )}
                         </span>
                       </div>
+                    </div>
+
+                    {/* BANNER UTAMA: SCAN QR CODE PEMBINA */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-indigo-800 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-400 shrink-0">
+                          <QrCode className="w-6 h-6 animate-pulse" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                              SCAN QR RESMI PEMBINA
+                            </span>
+                            <span className="text-[10px] text-slate-300">Cepat & 100% Akurat</span>
+                          </div>
+                          <h4 className="text-sm font-bold text-white mt-0.5">
+                            Scan Barcode QR yang Ditempel di Sekolah
+                          </h4>
+                          <p className="text-xs text-slate-300">
+                            Arahkan kamera ke lembar poster QR yang telah dicetak Pembina OSIS
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsQrScannerOpen(true)}
+                        className="min-h-[46px] px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 shrink-0"
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span>Buka Kamera Scan QR</span>
+                      </button>
+                    </div>
+
+                    <div className="relative flex py-1 items-center">
+                      <div className="flex-grow border-t border-slate-200"></div>
+                      <span className="flex-shrink mx-4 text-slate-400 text-[11px] font-medium uppercase font-mono">
+                        Atau Gunakan Presensi GPS Mandiri
+                      </span>
+                      <div className="flex-grow border-t border-slate-200"></div>
                     </div>
 
                     {/* Status Jika Sudah Absen Hari Ini */}
@@ -1711,6 +1799,13 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
           <span className="text-[10px] leading-tight font-bold">Tim Sekbid</span>
         </button>
       </div>
+
+      {/* MODAL SCANNER QR CODE PEMBINA */}
+      <PresensiQrScannerModal
+        isOpen={isQrScannerOpen}
+        onClose={() => setIsQrScannerOpen(false)}
+        onScanSuccess={handleQrScanSuccess}
+      />
     </div>
   );
 };

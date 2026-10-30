@@ -741,6 +741,7 @@ export default function App() {
             presensiList={presensiList}
             currentGeoConfig={schoolGeoConfig}
             agendaSekretaris={agendaSekretaris}
+            schoolIdentity={schoolIdentity}
             onUpdateAgendaSekretaris={(updated) => setAgendaSekretaris(updated)}
             onNavigateToMapsConfig={() => setDashboardView('geomaps')}
             onAddPresensi={(record) => {

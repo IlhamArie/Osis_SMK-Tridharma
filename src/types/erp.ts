@@ -168,6 +168,8 @@ export interface PresensiRecord {
   validatedAt?: string;
   catatanPembina?: string;
   kategoriPengurus?: 'bph' | 'sekbid' | 'anggota';
+  metodeVerifikasi?: 'Scan QR Pembina' | 'Geofencing GPS' | 'Manual';
+  qrToken?: string;
 }
 
 export interface AgendaHarianSekretaris {

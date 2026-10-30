@@ -42,15 +42,19 @@ import {
   Edit3,
   FileSpreadsheet,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  QrCode
 } from 'lucide-react';
 import { RekapPresensiBulananModal } from './RekapPresensiBulananModal';
+import { PresensiQrPembinaModal } from './PresensiQrPembinaModal';
+import { SchoolIdentityConfig } from '../../types/erp';
 
 interface PresensiGeofencingProps {
   currentUser: UserAccount;
   presensiList: PresensiRecord[];
   currentGeoConfig?: SchoolGeoConfig;
   agendaSekretaris?: AgendaHarianSekretaris;
+  schoolIdentity?: SchoolIdentityConfig;
   onUpdateAgendaSekretaris?: (agenda: AgendaHarianSekretaris) => void;
   onAddPresensi: (record: Omit<PresensiRecord, 'id'>) => void;
   onUpdatePresensi?: (record: PresensiRecord) => void;
@@ -67,6 +71,7 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
   presensiList,
   currentGeoConfig,
   agendaSekretaris,
+  schoolIdentity,
   onUpdateAgendaSekretaris,
   onAddPresensi,
   onUpdatePresensi,
@@ -80,6 +85,14 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
   const [activePresensiTab, setActivePresensiTab] = useState<'daftar' | 'absen' | 'radar' | 'agenda'>(
     isPembina ? 'daftar' : 'absen'
   );
+
+  // Pembina tidak perlu melakukan presensi (khusus verifikasi & pemantauan)
+  useEffect(() => {
+    if (isPembina && activePresensiTab === 'absen') {
+      setActivePresensiTab('daftar');
+    }
+  }, [isPembina, activePresensiTab]);
+
   const [filterKategori, setFilterKategori] = useState<
     'semua' | 'bph' | 'sekbid' | 'menunggu' | 'tervalidasi' | 'terlambat'
   >('semua');
@@ -90,6 +103,7 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
   >('Disetujui Sah');
   const [toastValidasi, setToastValidasi] = useState<string | null>(null);
   const [isRekapModalOpen, setIsRekapModalOpen] = useState<boolean>(false);
+  const [isQrPembinaModalOpen, setIsQrPembinaModalOpen] = useState<boolean>(false);
 
   // States for Simple & Practical Workflow
   const [forceShowAbsenForm, setForceShowAbsenForm] = useState<boolean>(false);
@@ -362,14 +376,14 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
     return true;
   });
 
-  // Presensi Pengguna Saat Ini Hari Ini & Riwayat Terakhir
+  // Presensi Pengguna Saat Ini Hari Ini & Riwayat Terakhir (Hanya untuk pengurus siswa, Pembina bebas presensi)
   const todayDateStr = new Date().toISOString().split('T')[0];
-  const myTodayPresensi = presensiList.find(
-    (p) => p.userId === currentUser.id && p.tanggal === todayDateStr
-  );
-  const myRecentPresensi = presensiList
-    .filter((p) => p.userId === currentUser.id)
-    .slice(0, 5);
+  const myTodayPresensi = !isPembina
+    ? presensiList.find((p) => p.userId === currentUser.id && p.tanggal === todayDateStr)
+    : undefined;
+  const myRecentPresensi = !isPembina
+    ? presensiList.filter((p) => p.userId === currentUser.id).slice(0, 5)
+    : [];
 
   // Statistik Presensi
   const countTotal = presensiList.length;
@@ -415,14 +429,26 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
           </div>
 
           {isPembina && (
-            <button
-              type="button"
-              onClick={() => setIsRekapModalOpen(true)}
-              className="min-h-[40px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs active:scale-95"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Rekap Bulanan (Excel)</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setIsQrPembinaModalOpen(true)}
+                className="min-h-[40px] px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs active:scale-95"
+                title="Buat & Cetak Poster Barcode QR Code Resmi Pembina untuk ditempel di sekolah"
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Cetak QR Code Pembina</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsRekapModalOpen(true)}
+                className="min-h-[40px] px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs active:scale-95"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Rekap Bulanan (Excel)</span>
+              </button>
+            </>
           )}
 
           {onNavigateToMapsConfig && (
@@ -447,6 +473,40 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
           </button>
         </div>
       </div>
+
+      {/* KHUSUS PEMBINA: PEMBERITAHUAN RESMI BEBAS PRESENSI */}
+      {isPembina && (
+        <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-purple-200/90 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-purple-950">
+                  Peran Akses: Pembina OSIS (Supervisor & Verifikator)
+                </span>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-200/80 text-purple-900 border border-purple-300">
+                  Bebas Presensi
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                Sebagai Pembina OSIS, Anda <strong>tidak perlu melakukan presensi kehadiran</strong>. Wewenang Anda adalah mengawasi, memvalidasi kehadiran seluruh pengurus OSIS, dan mencetak poster QR Code resmi kegiatan.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsQrPembinaModalOpen(true)}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Cetak Poster QR</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. TAB NAVIGASI PRESENSI */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2.5 overflow-x-auto no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
@@ -482,36 +542,21 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
             </button>
           </>
         ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => setActivePresensiTab('daftar')}
-              className={`min-h-[44px] px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 active:scale-95 ${
-                activePresensiTab === 'daftar'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white bg-slate-100/70 sm:bg-transparent'
-              }`}
-            >
-              <CheckCheck className="w-5 h-5" />
-              <span>1. Rekap & Validasi Pengurus</span>
-              <span className="text-[10px] font-mono bg-white/20 px-1.5 py-0.5 rounded-full">
-                {presensiList.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActivePresensiTab('absen')}
-              className={`min-h-[44px] px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 active:scale-95 ${
-                activePresensiTab === 'absen'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white bg-slate-100/70 sm:bg-transparent'
-              }`}
-            >
-              <CheckCircle className="w-5 h-5" />
-              <span>2. Form Simulasi Absen</span>
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => setActivePresensiTab('daftar')}
+            className={`min-h-[44px] px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 active:scale-95 ${
+              activePresensiTab === 'daftar'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white bg-slate-100/70 sm:bg-transparent'
+            }`}
+          >
+            <CheckCheck className="w-5 h-5" />
+            <span>1. Rekap & Validasi Pengurus</span>
+            <span className="text-[10px] font-mono bg-white/20 px-1.5 py-0.5 rounded-full">
+              {presensiList.length}
+            </span>
+          </button>
         )}
 
         <button
@@ -524,7 +569,7 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
           }`}
         >
           <Navigation className="w-5 h-5" />
-          <span>3. Peta Radar & Radius</span>
+          <span>{isPembina ? '2. Peta Radar & Radius' : '3. Peta Radar & Radius'}</span>
         </button>
 
         {agendaSekretaris && (
@@ -538,7 +583,7 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
             }`}
           >
             <FileText className="w-5 h-5" />
-            <span>4. Agenda Harian</span>
+            <span>{isPembina ? '3. Agenda Harian' : '4. Agenda Harian'}</span>
           </button>
         )}
       </div>
@@ -575,9 +620,9 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
       )}
 
       {/* ============================================================== */}
-      {/* VIEW TAB 1: FORM ABSEN MANDIRI (SUPER SIMPEL & PRAKTIS)        */}
+      {/* VIEW TAB 1: FORM ABSEN MANDIRI (KHUSUS PENGURUS SISWA/BPH)     */}
       {/* ============================================================== */}
-      {activePresensiTab === 'absen' && (
+      {activePresensiTab === 'absen' && !isPembina && (
         <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-7 shadow-xs space-y-6">
             {/* Header Pengurus & Jam Digital Real-Time */}
@@ -1711,6 +1756,14 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
         isOpen={isRekapModalOpen}
         onClose={() => setIsRekapModalOpen(false)}
         onBatchValidate={onBatchValidatePresensi}
+      />
+
+      {/* MODAL GENERATOR & CETAK QR CODE RESMI PEMBINA */}
+      <PresensiQrPembinaModal
+        isOpen={isQrPembinaModalOpen}
+        onClose={() => setIsQrPembinaModalOpen(false)}
+        schoolIdentity={schoolIdentity}
+        pembinaName={currentUser.fullName}
       />
     </div>
   );
