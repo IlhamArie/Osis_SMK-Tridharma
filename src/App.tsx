@@ -637,6 +637,15 @@ export default function App() {
         currentView={dashboardView}
         systemModules={systemModules}
         schoolIdentity={schoolIdentity}
+        presensiList={presensiList}
+        currentGeoConfig={schoolGeoConfig}
+        onAddPresensi={(record) => {
+          const newRec: PresensiRecord = {
+            ...record,
+            id: `prs-${Date.now()}`,
+          };
+          setPresensiList([newRec, ...presensiList]);
+        }}
         onSelectView={setDashboardView}
         onLogout={() => {
           setCurrentUser(null);

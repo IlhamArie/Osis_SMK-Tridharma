@@ -1,6 +1,14 @@
-import React from 'react';
-import { UserAccount, SystemModulesConfig, SchoolIdentityConfig } from '../../types/erp';
+import React, { useState } from 'react';
+import { 
+  UserAccount, 
+  SystemModulesConfig, 
+  SchoolIdentityConfig, 
+  PresensiRecord, 
+  SchoolGeoConfig 
+} from '../../types/erp';
 import { INITIAL_SCHOOL_IDENTITY } from '../../data/schoolIdentityPresets';
+import { SCHOOL_GEO_CONFIG, getWitaDate, evaluateTardiness } from '../../utils/geoUtils';
+import { PresensiQrScannerModal } from './PresensiQrScannerModal';
 import { 
   Shield, 
   Sliders, 
@@ -21,7 +29,10 @@ import {
   X,
   Camera,
   Compass,
-  Cloud
+  Cloud,
+  QrCode,
+  CheckCircle,
+  CheckCircle2
 } from 'lucide-react';
 
 export type DashboardView = 
@@ -43,6 +54,9 @@ interface DashboardLayoutProps {
   currentView: DashboardView;
   systemModules: SystemModulesConfig;
   schoolIdentity?: SchoolIdentityConfig;
+  presensiList?: PresensiRecord[];
+  currentGeoConfig?: SchoolGeoConfig;
+  onAddPresensi?: (record: Omit<PresensiRecord, 'id'>) => void;
   onSelectView: (view: DashboardView) => void;
   onSwitchUser?: (user: UserAccount) => void;
   onLogout: () => void;
@@ -58,6 +72,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   currentView,
   systemModules,
   schoolIdentity,
+  presensiList = [],
+  currentGeoConfig,
+  onAddPresensi,
   onSelectView,
   onSwitchUser,
   onLogout,
@@ -67,11 +84,73 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
 }) => {
   const identity = schoolIdentity || INITIAL_SCHOOL_IDENTITY;
-  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
+  const activeGeo = currentGeoConfig || SCHOOL_GEO_CONFIG;
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showBphQrScanner, setShowBphQrScanner] = useState(false);
+  const [bphToast, setBphToast] = useState<string | null>(null);
 
   // Check if role has admin control access
   const isSuperAdmin = currentUser.role === 'pembina';
   const isBPH = ['pembina', 'ketua', 'wakil', 'sekretaris', 'bendahara'].includes(currentUser.role);
+  const isBphNotPembina = isBPH && currentUser.role !== 'pembina';
+
+  // Check today attendance for this BPH user
+  const todayDateStr = new Date().toISOString().split('T')[0];
+  const bphTodayRecord = isBphNotPembina
+    ? presensiList.find(
+        (p) =>
+          (p.userId === currentUser.id || p.namaPengurus.toLowerCase() === currentUser.fullName.toLowerCase()) &&
+          p.tanggal === todayDateStr
+      )
+    : undefined;
+
+  const handleBphScanSuccess = (payload: { jenis: string; token: string; pembina: string; rawPayload: any }) => {
+    const nowWita = getWitaDate();
+    const formattedWita = `${nowWita.getHours().toString().padStart(2, '0')}:${nowWita
+      .getMinutes()
+      .toString()
+      .padStart(2, '0')}:${nowWita.getSeconds().toString().padStart(2, '0')} WITA`;
+
+    const tardiness = evaluateTardiness(nowWita.getHours(), nowWita.getMinutes());
+
+    const statusFinal: PresensiRecord['status'] = tardiness.isTerlambat
+      ? 'Hadir Valid (Terlambat)'
+      : 'Hadir Valid (Tepat Waktu)';
+
+    const recordedJenis = (['Kehadiran Sekolah & Piket', 'Apel Pagi / Upacara', 'Rapat Rutin', 'Kepanitiaan'].includes(
+      payload.jenis
+    )
+      ? payload.jenis
+      : 'Kehadiran Sekolah & Piket') as PresensiRecord['jenis'];
+
+    if (onAddPresensi) {
+      onAddPresensi({
+        userId: currentUser.id,
+        namaPengurus: currentUser.fullName,
+        jabatan: currentUser.jabatan,
+        kategoriPengurus: 'bph',
+        tanggal: todayDateStr,
+        waktu: formattedWita,
+        jenis: recordedJenis,
+        latitude: activeGeo.latitude,
+        longitude: activeGeo.longitude,
+        jarakMeter: 4,
+        status: statusFinal,
+        keterangan: `Presensi BPH via Scan QR Resmi Pembina (${payload.token})`,
+        akurasiMeter: 4,
+        isTerlambat: tardiness.isTerlambat,
+        menitKeterlambatan: tardiness.menitKeterlambatan,
+        waktuBatas: '07:15 WITA',
+        metodeVerifikasi: 'Scan QR Pembina',
+        qrToken: payload.token,
+      });
+    }
+
+    setBphToast(
+      `🎉 Presensi BPH Berhasil Dicatat: ${currentUser.fullName} (${currentUser.jabatan}) - Terverifikasi Scan QR Pembina!`
+    );
+    setTimeout(() => setBphToast(null), 6000);
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 flex font-sans text-slate-900">
@@ -494,6 +573,41 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Absen Scan QR Khusus BPH (Ketua, Wakil, Sekretaris, Bendahara) */}
+            {isBphNotPembina && (
+              <>
+                {bphTodayRecord ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-semibold shadow-2xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="hidden md:inline font-bold">
+                      BPH Hadir ({bphTodayRecord.waktu.split(' ')[0]})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowBphQrScanner(true)}
+                      className="text-[10px] text-emerald-700 hover:text-emerald-900 underline font-mono font-bold cursor-pointer ml-0.5"
+                      title="Klik untuk scan ulang presensi BPH jika diperlukan"
+                    >
+                      Scan Ulang
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowBphQrScanner(true)}
+                    className="min-h-[40px] px-3.5 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-xl transition-all shadow-md shadow-emerald-600/30 flex items-center gap-2 active:scale-95 cursor-pointer whitespace-nowrap animate-pulse hover:animate-none"
+                    title="Absen Kehadiran Harian BPH OSIS via Scan QR Resmi Pembina"
+                  >
+                    <QrCode className="w-4 h-4 text-emerald-200" />
+                    <span>Absen QR BPH</span>
+                    <span className="text-[9px] bg-emerald-950/70 text-emerald-200 px-1.5 py-0.2 rounded font-mono font-bold">
+                      SCAN
+                    </span>
+                  </button>
+                )}
+              </>
+            )}
+
             <div className="hidden sm:flex items-center gap-2 text-xs font-mono bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
               <span>SMK Tridharma Gorontalo</span>
@@ -555,18 +669,29 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <span className="text-[10px] leading-tight">Proker</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => onSelectView('presensi')}
-            className={`flex flex-col items-center justify-center min-w-[62px] min-h-[48px] py-1 px-2 rounded-xl transition-all active:scale-95 ${
-              currentView === 'presensi'
-                ? 'text-indigo-600 font-bold bg-indigo-50/80 ring-1 ring-indigo-200'
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            <MapPin className="w-5 h-5 mb-0.5 text-indigo-600 shrink-0" />
-            <span className="text-[10px] leading-tight font-bold">Presensi</span>
-          </button>
+          {isBphNotPembina ? (
+            <button
+              type="button"
+              onClick={() => setShowBphQrScanner(true)}
+              className="flex flex-col items-center justify-center min-w-[62px] min-h-[48px] py-1 px-2 rounded-xl transition-all active:scale-95 text-emerald-600 font-bold bg-emerald-50/80 ring-1 ring-emerald-300"
+            >
+              <QrCode className="w-5 h-5 mb-0.5 text-emerald-600 shrink-0" />
+              <span className="text-[10px] leading-tight font-bold">Absen QR</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onSelectView('presensi')}
+              className={`flex flex-col items-center justify-center min-w-[62px] min-h-[48px] py-1 px-2 rounded-xl transition-all active:scale-95 ${
+                currentView === 'presensi'
+                  ? 'text-indigo-600 font-bold bg-indigo-50/80 ring-1 ring-indigo-200'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              <MapPin className="w-5 h-5 mb-0.5 text-indigo-600 shrink-0" />
+              <span className="text-[10px] leading-tight font-bold">Presensi</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -591,6 +716,23 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <span className="text-[10px] leading-tight">Menu</span>
           </button>
         </div>
+
+        {/* Toast Notifikasi Presensi BPH */}
+        {bphToast && (
+          <div className="fixed top-20 right-6 z-50 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 duration-200">
+            <CheckCircle className="w-4 h-4 text-emerald-200" />
+            <span>{bphToast}</span>
+          </div>
+        )}
+
+        {/* Modal Scanner QR Khusus BPH */}
+        {showBphQrScanner && (
+          <PresensiQrScannerModal
+            isOpen={showBphQrScanner}
+            onClose={() => setShowBphQrScanner(false)}
+            onScanSuccess={handleBphScanSuccess}
+          />
+        )}
       </div>
     </div>
   );

@@ -53,7 +53,8 @@ import {
   CreditCard,
   BarChart3,
   GraduationCap,
-  BookOpen
+  BookOpen,
+  FileDown
 } from 'lucide-react';
 import { BulkExcelImportModal } from './BulkExcelImportModal';
 import { KartuTandaAnggotaModal } from './KartuTandaAnggotaModal';
@@ -686,6 +687,16 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
               <span className="text-[9px] bg-emerald-950/80 text-emerald-200 px-1.5 py-0.5 rounded font-mono font-bold">
                 PRINT
               </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('analytics')}
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap shadow-sm border border-emerald-400/40 active:scale-95 cursor-pointer"
+              title="Lihat Visualisasi Recharts & Unduh Laporan PDF Ringkasan Otomatis"
+            >
+              <FileDown className="w-4 h-4 text-emerald-200" />
+              <span>Laporan PDF & Analitik</span>
             </button>
 
             <button

@@ -41,8 +41,12 @@ import {
   BarChart3,
   Sparkles,
   Users,
-  Award
+  Award,
+  FileDown,
+  Download,
+  Check
 } from 'lucide-react';
+import { generateExecutivePdfReport } from '../../utils/executiveReportPdfGenerator';
 
 interface DashboardAnalyticsRechartsProps {
   presensiList: PresensiRecord[];
@@ -65,6 +69,8 @@ export const DashboardAnalyticsRecharts: React.FC<DashboardAnalyticsRechartsProp
   const [filterRentang, setFilterRentang] = useState<'7hari' | '30hari' | 'semua'>('semua');
   const [filterJurusan, setFilterJurusan] = useState<'semua' | 'askep' | 'farmasi'>('semua');
   const [chartActiveTab, setChartActiveTab] = useState<'semua' | 'presensi' | 'keuangan'>('semua');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfSuccessToast, setPdfSuccessToast] = useState<string | null>(null);
 
   // Format IDR Helper
   const formatIDR = (val: number) => {
@@ -151,13 +157,15 @@ export const DashboardAnalyticsRecharts: React.FC<DashboardAnalyticsRechartsProp
         memberNamesInClass.includes(p.namaPengurus.toLowerCase())
       );
 
-      const hadisOnTime = presensiInClass.filter((p) => !p.isTerlambat).length;
+      const hadisOnTime = presensiInClass.filter((p) => !p.isTerlambat && !p.status.includes('Izin') && !p.status.includes('Sakit')).length;
       const hadirLate = presensiInClass.filter((p) => p.isTerlambat).length;
+      const hadirIzin = presensiInClass.filter((p) => p.status.includes('Izin') || p.status.includes('Sakit')).length;
 
       return {
         kelas: k,
         tepatWaktu: hadisOnTime,
         terlambat: hadirLate,
+        izin: hadirIzin,
         total: presensiInClass.length,
       };
     });
@@ -265,8 +273,54 @@ export const DashboardAnalyticsRecharts: React.FC<DashboardAnalyticsRechartsProp
     };
   }, [transaksiList]);
 
+  // Handler: Generate & Download Executive PDF Report based on active Recharts data
+  const handleDownloadPdfReport = () => {
+    setIsGeneratingPdf(true);
+    try {
+      generateExecutivePdfReport({
+        presensiList,
+        transaksiList,
+        accounts,
+        orgMembers,
+        schoolIdentity: identity,
+        filterRentang,
+        filterJurusan,
+        presensiAnalytics: {
+          total: presensiAnalytics.total,
+          tepatWaktu: presensiAnalytics.tepatWaktu,
+          terlambat: presensiAnalytics.terlambat,
+          izin: presensiAnalytics.izin,
+          alpa: presensiAnalytics.alpa,
+          tingkatKehadiran: presensiAnalytics.tingkatKehadiran,
+          tingkatKedisiplinan: presensiAnalytics.tingkatKedisiplinan,
+          kelasData: presensiAnalytics.classData,
+        },
+        kasAnalytics: {
+          totalPemasukan: kasAnalytics.totalPemasukan,
+          totalPengeluaran: kasAnalytics.totalPengeluaran,
+          saldoAkhir: kasAnalytics.saldoAkhir,
+          categoryData: kasAnalytics.pieCategoryData,
+        },
+      });
+      setPdfSuccessToast('Laporan Ringkasan Eksekutif PDF berhasil digenerate & diunduh!');
+      setTimeout(() => setPdfSuccessToast(null), 4000);
+    } catch (err) {
+      console.error('Gagal men-generate laporan PDF:', err);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Toast Notifikasi Unduh PDF */}
+      {pdfSuccessToast && (
+        <div className="fixed top-20 right-6 z-50 bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-3 duration-200">
+          <Check className="w-4 h-4 text-emerald-200" />
+          <span>{pdfSuccessToast}</span>
+        </div>
+      )}
+
       {/* Visual Header Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-800/40 rounded-3xl p-5 sm:p-6 text-white shadow-md relative overflow-hidden">
         <div className="absolute right-0 top-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -287,41 +341,58 @@ export const DashboardAnalyticsRecharts: React.FC<DashboardAnalyticsRechartsProp
             </p>
           </div>
 
-          {/* Tab Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-800/90 border border-indigo-500/30 p-1 rounded-2xl shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {/* Tombol Unduh Laporan PDF Eksekutif */}
             <button
               type="button"
-              onClick={() => setChartActiveTab('semua')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                chartActiveTab === 'semua'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10'
-              }`}
+              onClick={handleDownloadPdfReport}
+              disabled={isGeneratingPdf}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-md shadow-emerald-600/30 border border-emerald-400/40 active:scale-95 cursor-pointer whitespace-nowrap"
+              title="Unduh Laporan Ringkasan PDF Otomatis Berdasarkan Data Recharts yang Sedang Ditampilkan"
             >
-              Semua Grafik
+              <FileDown className="w-4 h-4 text-emerald-100" />
+              <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Laporan PDF'}</span>
+              <span className="text-[9px] bg-emerald-950/80 text-emerald-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                AUTO
+              </span>
             </button>
-            <button
-              type="button"
-              onClick={() => setChartActiveTab('presensi')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                chartActiveTab === 'presensi'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Tren Presensi
-            </button>
-            <button
-              type="button"
-              onClick={() => setChartActiveTab('keuangan')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                chartActiveTab === 'keuangan'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-300 hover:text-white hover:bg-white/10'
-              }`}
-            >
-              Arus Kas
-            </button>
+
+            {/* Tab Selector */}
+            <div className="flex items-center gap-1.5 bg-slate-800/90 border border-indigo-500/30 p-1 rounded-2xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setChartActiveTab('semua')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartActiveTab === 'semua'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                Semua Grafik
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartActiveTab('presensi')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartActiveTab === 'presensi'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                Tren Presensi
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartActiveTab('keuangan')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartActiveTab === 'keuangan'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                Arus Kas
+              </button>
+            </div>
           </div>
         </div>
       </div>

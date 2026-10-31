@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import { RekapPresensiBulananModal } from './RekapPresensiBulananModal';
 import { PresensiQrPembinaModal } from './PresensiQrPembinaModal';
+import { PresensiQrScannerModal } from './PresensiQrScannerModal';
 import { SchoolIdentityConfig } from '../../types/erp';
 
 interface PresensiGeofencingProps {
@@ -104,6 +105,7 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
   const [toastValidasi, setToastValidasi] = useState<string | null>(null);
   const [isRekapModalOpen, setIsRekapModalOpen] = useState<boolean>(false);
   const [isQrPembinaModalOpen, setIsQrPembinaModalOpen] = useState<boolean>(false);
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState<boolean>(false);
 
   // States for Simple & Practical Workflow
   const [forceShowAbsenForm, setForceShowAbsenForm] = useState<boolean>(false);
@@ -288,6 +290,56 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
     setTimeout(() => {
       setSuccessToast(null);
     }, 5500);
+  };
+
+  // Handler Sukses Scan QR Pembina untuk BPH & Anggota
+  const handleQrScanSuccess = (payload: { jenis: string; token: string; pembina: string; rawPayload: any }) => {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = formattedWitaTime;
+
+    let statusFinal: PresensiRecord['status'];
+    if (!isValid) {
+      statusFinal = 'Di Luar Radius';
+    } else if (tardinessInfo.isTerlambat) {
+      statusFinal = 'Hadir Valid (Terlambat)';
+    } else {
+      statusFinal = 'Hadir Valid (Tepat Waktu)';
+    }
+
+    const recordedJenis = (['Kehadiran Sekolah & Piket', 'Apel Pagi / Upacara', 'Rapat Rutin', 'Kepanitiaan'].includes(
+      payload.jenis
+    )
+      ? payload.jenis
+      : jenisPresensi) as PresensiRecord['jenis'];
+
+    const userIsBPH = checkIsBPH({ jabatan: currentUser.jabatan } as any);
+
+    onAddPresensi({
+      userId: currentUser.id,
+      namaPengurus: currentUser.fullName,
+      jabatan: currentUser.jabatan,
+      kategoriPengurus: userIsBPH ? 'bph' : 'sekbid',
+      tanggal: dateStr,
+      waktu: timeStr,
+      jenis: recordedJenis,
+      latitude: currentLat,
+      longitude: currentLng,
+      jarakMeter: currentDistance,
+      status: statusFinal,
+      keterangan: `Presensi Terverifikasi Scan QR Resmi Pembina (${payload.token})`,
+      akurasiMeter: 4,
+      isTerlambat: tardinessInfo.isTerlambat,
+      menitKeterlambatan: tardinessInfo.menitKeterlambatan,
+      waktuBatas: '07:15 WITA',
+      metodeVerifikasi: 'Scan QR Pembina',
+      qrToken: payload.token,
+    });
+
+    setSuccessToast(
+      `🎉 Presensi ${currentUser.fullName} (${currentUser.jabatan}) BERHASIL diverifikasi lewat SCAN QR PEMBINA! (${timeStr})`
+    );
+    setTimeout(() => setSuccessToast(null), 6000);
   };
 
   // Validasi Tunggal oleh Pembina
@@ -806,6 +858,43 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Opsi 1: Scan QR Code Resmi Pembina (Direkomendasikan untuk BPH & Pengurus) */}
+                <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-300/80 rounded-2xl p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                        <QrCode className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-emerald-950">
+                          Presensi Cepat via Scan QR Pembina
+                        </div>
+                        <div className="text-[10px] text-emerald-700">
+                          Arahkan kamera HP ke poster QR Code yang dipajang oleh Pembina
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono">
+                      DIREKOMENDASIKAN
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsQrScannerOpen(true)}
+                    className="w-full min-h-[46px] py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all shadow-md shadow-emerald-600/20 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <QrCode className="w-5 h-5 text-emerald-100" />
+                    <span>Buka Kamera & Scan QR Pembina Sekarang</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 my-1 text-[11px] text-slate-400">
+                  <div className="flex-1 h-px bg-slate-200"></div>
+                  <span>atau kirim via Geofencing GPS kampus</span>
+                  <div className="flex-1 h-px bg-slate-200"></div>
+                </div>
 
                 {/* Tombol Utama Presensi (Sangat Jelas, Soft & Praktis) */}
                 <button
@@ -1765,6 +1854,15 @@ export const PresensiGeofencing: React.FC<PresensiGeofencingProps> = ({
         schoolIdentity={schoolIdentity}
         pembinaName={currentUser.fullName}
       />
+
+      {/* MODAL SCANNER QR CODE UNTUK BPH & PENGURUS */}
+      {isQrScannerOpen && (
+        <PresensiQrScannerModal
+          isOpen={isQrScannerOpen}
+          onClose={() => setIsQrScannerOpen(false)}
+          onScanSuccess={handleQrScanSuccess}
+        />
+      )}
     </div>
   );
 };
