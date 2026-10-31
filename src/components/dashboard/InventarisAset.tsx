@@ -291,7 +291,7 @@ export const InventarisAset: React.FC<InventarisAsetProps> = ({
                     required
                     value={peminjamKelas}
                     onChange={(e) => setPeminjamKelas(e.target.value)}
-                    placeholder="XI TKJ 1 / Sekbid 4"
+                    placeholder="X Askep 1 / Sekbid 4"
                     className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
                   />
                 </div>

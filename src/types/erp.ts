@@ -28,7 +28,7 @@ export interface OrgMember {
   nama: string;
   jabatan: string;
   kategori: 'pembina' | 'bph' | 'sekbid' | 'anggota_sekbid';
-  peranSekbid?: 'koordinator' | 'anggota';
+  peranSekbid?: 'koordinator' | 'anggota' | 'pembina_guru';
   sekbidNomor?: number;
   sekbidNama?: string;
   kelas: string;
@@ -36,6 +36,8 @@ export interface OrgMember {
   urutan: number;
   kontak: string;
   visiSingkat?: string;
+  nip?: string;
+  mataPelajaran?: string;
 }
 
 export interface SekbidDefinition {

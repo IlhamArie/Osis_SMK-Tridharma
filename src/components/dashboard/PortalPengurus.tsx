@@ -72,7 +72,7 @@ interface PortalPengurusProps {
   schoolIdentity?: SchoolIdentityConfig;
   onAddPresensi: (record: Omit<PresensiRecord, 'id'>) => void;
   onUpdateProker: (updatedProker: ProgramKerja) => void;
-  onSwitchUser: (user: UserAccount) => void;
+  onSwitchUser?: (user: UserAccount) => void;
   onLogout: () => void;
   onOpenPublicPortal: () => void;
   onOpenVercelGuide?: () => void;
@@ -421,45 +421,25 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
             </div>
           </div>
 
-          {/* User profile preview & actions */}
+          {/* User profile badge & authenticated actions */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex flex-col text-right">
-              <span className="text-xs font-bold text-white leading-tight">{currentUser.fullName}</span>
-              <span className="text-[10px] text-indigo-300 leading-tight">{currentUser.jabatan}</span>
+            <div className="flex items-center gap-2.5 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+              <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {currentUser.fullName.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-bold text-white leading-tight truncate max-w-[150px] sm:max-w-[200px]">
+                  {currentUser.fullName}
+                </span>
+                <span className="text-[10px] text-indigo-300 leading-tight truncate max-w-[150px] sm:max-w-[200px]">
+                  {currentUser.jabatan}
+                </span>
+              </div>
             </div>
-
-            {/* Switch User Dropdown */}
-            <select
-              value={currentUser.id}
-              onChange={(e) => {
-                const found = allAccounts.find((a) => a.id === e.target.value);
-                if (found) onSwitchUser(found);
-              }}
-              className="min-h-[38px] text-xs bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[145px] sm:max-w-none truncate"
-              title="Beralih Akun Pengurus"
-            >
-              {allAccounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.fullName} ({acc.role.toUpperCase()})
-                </option>
-              ))}
-            </select>
-
-            {onOpenVercelGuide && (
-              <button
-                type="button"
-                onClick={onOpenVercelGuide}
-                className="min-h-[38px] px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-sky-300 hover:text-white bg-sky-950/70 hover:bg-sky-900 rounded-xl border border-sky-800/80 transition-all flex items-center gap-1.5 active:scale-95"
-                title="Panduan Hosting Vercel & Database Cloud Gratis"
-              >
-                <Cloud className="w-4 h-4 text-sky-400" />
-                <span className="hidden sm:inline">Database Cloud</span>
-              </button>
-            )}
 
             <button
               onClick={onOpenPublicPortal}
-              className="min-h-[38px] px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-800 transition-all flex items-center gap-1.5 active:scale-95"
+              className="min-h-[38px] px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-800 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
               title="Buka Laman Publik"
             >
               <ExternalLink className="w-4 h-4 text-slate-400" />
@@ -468,11 +448,12 @@ export const PortalPengurus: React.FC<PortalPengurusProps> = ({
 
             <button
               onClick={onLogout}
-              className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-slate-900 active:scale-95 transition-all"
-              title="Keluar / Logout"
-              aria-label="Keluar"
+              className="px-3 py-1.5 min-h-[38px] rounded-xl flex items-center gap-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold active:scale-95 transition-all cursor-pointer"
+              title="Keluar dari Akun"
+              aria-label="Keluar dari Akun"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-4 h-4 text-rose-400" />
+              <span>Keluar</span>
             </button>
           </div>
         </div>

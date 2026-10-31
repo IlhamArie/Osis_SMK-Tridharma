@@ -11,6 +11,7 @@ import {
   SekbidDefinition
 } from '../../types/erp';
 import { INITIAL_SCHOOL_IDENTITY } from '../../data/schoolIdentityPresets';
+import { DAFTAR_KELAS } from '../../data/classList';
 import { 
   Send, 
   CheckCircle, 
@@ -38,7 +39,7 @@ import {
   Menu,
   X,
   Crown,
-  Cloud
+  GraduationCap
 } from 'lucide-react';
 
 interface PublicPortalProps {
@@ -51,8 +52,7 @@ interface PublicPortalProps {
   schoolIdentity?: SchoolIdentityConfig;
   onAddAspirasi: (aspirasi: Omit<AspirasiSiswa, 'id' | 'tiketKode' | 'tanggal' | 'status'>) => string;
   onOpenLogin: () => void;
-  onOpenBlueprint: () => void;
-  onOpenVercelGuide?: () => void;
+  onOpenBlueprint?: () => void;
 }
 
 export const PublicPortal: React.FC<PublicPortalProps> = ({
@@ -66,7 +66,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
   onAddAspirasi,
   onOpenLogin,
   onOpenBlueprint,
-  onOpenVercelGuide,
 }) => {
   const identity = schoolIdentity || INITIAL_SCHOOL_IDENTITY;
   const currentSekbids = sekbidList && sekbidList.length > 0 ? sekbidList : OSIS_SEKBID_LIST;
@@ -94,7 +93,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
   // Aspirasi form state
   const [namaPengirim, setNamaPengirim] = useState('');
-  const [kelasPengirim, setKelasPengirim] = useState('X Teknik Komputer & Jaringan');
+  const [kelasPengirim, setKelasPengirim] = useState<string>('X Askep 1');
   const [isAnonim, setIsAnonim] = useState(false);
   const [kategoriAspirasi, setKategoriAspirasi] = useState<AspirasiSiswa['kategori']>('Sarana & Prasarana');
   const [judulAspirasi, setJudulAspirasi] = useState('');
@@ -163,9 +162,20 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
     : galeriList.filter(g => g.kategori.toLowerCase() === selectedGaleriCat.toLowerCase());
 
   // Group Org Members for Dynamic Tree
-  const pembina = orgMembers.find(m => m.kategori === 'pembina') || orgMembers[0];
-  const bphMembers = orgMembers.filter(m => m.kategori === 'bph').sort((a, b) => a.urutan - b.urutan);
-  const sekbidMembers = orgMembers.filter(m => m.kategori === 'sekbid').sort((a, b) => a.urutan - b.urutan);
+  const pembina =
+    orgMembers.find((m) => m.kategori === 'pembina' && !m.sekbidNomor && m.peranSekbid !== 'pembina_guru') ||
+    orgMembers.find((m) => m.kategori === 'pembina') ||
+    orgMembers[0];
+  const guruPembinaSekbids = orgMembers
+    .filter(
+      (m) =>
+        m.peranSekbid === 'pembina_guru' ||
+        (m.kategori === 'pembina' && m.sekbidNomor) ||
+        m.jabatan.toLowerCase().includes('guru pembina')
+    )
+    .sort((a, b) => (a.sekbidNomor || 0) - (b.sekbidNomor || 0));
+  const bphMembers = orgMembers.filter((m) => m.kategori === 'bph').sort((a, b) => a.urutan - b.urutan);
+  const sekbidMembers = orgMembers.filter((m) => m.kategori === 'sekbid').sort((a, b) => a.urutan - b.urutan);
 
   const currentBanner = activeBanners[currentBannerIndex] || activeBanners[0];
 
@@ -208,30 +218,9 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 shrink-0">
-            {onOpenVercelGuide && (
-              <button
-                onClick={onOpenVercelGuide}
-                className="flex items-center gap-1.5 min-h-[40px] px-2.5 sm:px-3 py-2 text-xs font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-xl transition-all border border-sky-300 shadow-xs active:scale-95"
-                title="Panduan Hosting Vercel & Database Cloud Gratis (Tanpa Koding)"
-              >
-                <Cloud className="w-4 h-4 text-sky-600" />
-                <span className="hidden sm:inline">Hosting & Cloud DB</span>
-                <span className="sm:hidden">Cloud DB</span>
-              </button>
-            )}
-
-            <button
-              onClick={onOpenBlueprint}
-              className="hidden sm:flex items-center gap-1.5 min-h-[40px] px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all border border-slate-300/70 active:scale-95"
-              title="Lihat Arsitektur Teknis & Database ERD"
-            >
-              <Layers className="w-4 h-4 text-indigo-600" />
-              <span>Blueprint</span>
-            </button>
-
             <button
               onClick={onOpenLogin}
-              className="flex items-center gap-1.5 min-h-[40px] px-3.5 sm:px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm shadow-indigo-200 hover:shadow-indigo-300 active:scale-95"
+              className="flex items-center gap-1.5 min-h-[40px] px-3.5 sm:px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-all shadow-sm shadow-indigo-200 hover:shadow-indigo-300 active:scale-95 cursor-pointer"
             >
               <Lock className="w-4 h-4" />
               <span>Portal Pengurus</span>
@@ -287,30 +276,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             >
               💬 Kotak Aspirasi Siswa
             </a>
-            {onOpenVercelGuide && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileNavOpen(false);
-                  onOpenVercelGuide();
-                }}
-                className="w-full min-h-[44px] flex items-center gap-2 px-3 rounded-xl text-xs font-semibold text-sky-700 hover:bg-sky-50 transition-colors"
-              >
-                <Cloud className="w-4 h-4 text-sky-600" />
-                <span>Panduan Hosting Vercel & Cloud DB Gratis</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setMobileNavOpen(false);
-                onOpenBlueprint();
-              }}
-              className="w-full min-h-[44px] flex items-center gap-2 px-3 rounded-xl text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-            >
-              <Layers className="w-4 h-4 text-indigo-600" />
-              <span>Blueprint & Arsitektur Teknis</span>
-            </button>
           </div>
         )}
       </header>
@@ -521,6 +486,65 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
             <div className="w-0.5 h-10 bg-indigo-300"></div>
           </div>
 
+          {/* Level 1.5: Dewan Guru Pembina di Setiap Seksi Bidang */}
+          {guruPembinaSekbids.length > 0 && (
+            <div className="flex flex-col items-center">
+              <div className="text-center mb-5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 border border-purple-200 text-purple-800 text-xs font-bold uppercase tracking-wider mb-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 text-purple-700" />
+                  <span>Dewan Guru Pembina Seksi Bidang</span>
+                </div>
+                <p className="text-xs text-slate-500 max-w-xl mx-auto">
+                  Para guru pembimbing dan pendamping program kerja di setiap Seksi Bidang kejuruan & kesiswaan.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
+                {guruPembinaSekbids.map((guru) => (
+                  <div
+                    key={guru.id}
+                    className="bg-white rounded-2xl border border-purple-200/90 p-4 shadow-xs hover:border-purple-400 hover:shadow-md transition-all flex flex-col justify-between group"
+                  >
+                    <div>
+                      <div className="flex items-start gap-3 mb-2.5">
+                        <div className="w-12 h-12 rounded-xl bg-slate-900 border border-purple-200 overflow-hidden shrink-0 shadow-2xs">
+                          {guru.fotoUrl ? (
+                            <img
+                              src={guru.fotoUrl}
+                              alt={guru.nama}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white bg-purple-700">
+                              {guru.nama.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-mono inline-block mb-1">
+                            SEKBID #{guru.sekbidNomor}
+                          </span>
+                          <div className="text-xs font-bold text-slate-900 leading-snug line-clamp-1">{guru.nama}</div>
+                          <div className="text-[11px] font-semibold text-purple-700 truncate">{guru.mataPelajaran || 'Guru Pembimbing'}</div>
+                          {guru.nip && <div className="text-[10px] text-slate-400 font-mono mt-0.5">NIP: {guru.nip}</div>}
+                        </div>
+                      </div>
+                    </div>
+                    {guru.visiSingkat && (
+                      <p className="text-[11px] text-slate-600 pt-2 border-t border-purple-50 italic line-clamp-2">
+                        "{guru.visiSingkat}"
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Connecting Vertical Line */}
+              <div className="w-0.5 h-10 bg-indigo-300 mt-8"></div>
+            </div>
+          )}
+
           {/* Level 2: Badan Pengurus Harian (BPH) */}
           <div>
             <div className="text-center text-xs font-bold text-slate-500 uppercase tracking-wider mb-5">
@@ -627,6 +651,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
               {currentSekbids.filter(
                 (s) => publicSekbidFilter === 'semua' || s.nomor === publicSekbidFilter
               ).map((sek) => {
+                const guruPembina = orgMembers.find(
+                  (m) =>
+                    (m.peranSekbid === 'pembina_guru' ||
+                      (m.kategori === 'pembina' && m.sekbidNomor) ||
+                      m.jabatan.toLowerCase().includes('guru pembina')) &&
+                    m.sekbidNomor === sek.nomor
+                );
+
                 const koordinator = orgMembers.find(
                   (m) =>
                     (m.kategori === 'sekbid' || m.kategori === 'anggota_sekbid') &&
@@ -654,7 +686,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                             SEKBID #{sek.nomor}
                           </span>
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                            {1 + anggotaSekbid.length} Personel ({koordinator ? '1 Koord' : '0 Koord'}, {anggotaSekbid.length} Anggota)
+                            {(guruPembina ? 1 : 0) + (koordinator ? 1 : 0) + anggotaSekbid.length} Personel ({guruPembina ? '1 Guru' : '0 Guru'}, {koordinator ? '1 Koord' : '0 Koord'}, {anggotaSekbid.length} Anggota)
                           </span>
                         </div>
                         <h4 className="text-base sm:text-lg font-bold text-white tracking-wide">
@@ -666,7 +698,46 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                       </div>
 
                       {/* Members Content */}
-                      <div className="p-4 sm:p-5 space-y-4">
+                      <div className="p-4 sm:p-5 space-y-3.5">
+                        {/* Guru Pembina Sekbid */}
+                        {guruPembina && (
+                          <div className="bg-gradient-to-r from-purple-50/90 via-white to-purple-50/50 rounded-2xl border border-purple-200 p-3.5 flex items-center gap-3.5 shadow-2xs">
+                            <div className="w-13 h-13 rounded-2xl bg-slate-900 border-2 border-purple-400 overflow-hidden shrink-0 shadow-sm">
+                              {guruPembina.fotoUrl ? (
+                                <img
+                                  src={guruPembina.fotoUrl}
+                                  alt={guruPembina.nama}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center font-bold text-white text-xs bg-purple-700">
+                                  {guruPembina.nama.slice(0, 2).toUpperCase()}
+                                </div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-900 truncate">
+                                  {guruPembina.nama}
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 text-purple-800 font-mono flex items-center gap-1">
+                                  <GraduationCap className="w-2.5 h-2.5" />
+                                  <span>GURU PEMBINA</span>
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-semibold text-purple-700 truncate">
+                                {guruPembina.mataPelajaran || 'Guru Pendamping Sekbid'}
+                              </div>
+                              {guruPembina.nip && (
+                                <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                                  NIP: {guruPembina.nip}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Koordinator */}
                         {koordinator && (
                           <div className="bg-gradient-to-r from-indigo-50/70 to-white rounded-2xl border border-indigo-100 p-3.5 flex items-center gap-3.5">
@@ -1085,20 +1156,13 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
                       <select
                         value={kelasPengirim}
                         onChange={(e) => setKelasPengirim(e.target.value)}
-                        className="w-full text-xs bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                        className="w-full text-xs bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500 font-medium"
                       >
-                        <option value="X TKJ (Teknik Komputer & Jaringan)">X TKJ</option>
-                        <option value="XI TKJ (Teknik Komputer & Jaringan)">XI TKJ</option>
-                        <option value="XII TKJ (Teknik Komputer & Jaringan)">XII TKJ</option>
-                        <option value="X RPL (Rekayasa Perangkat Lunak)">X RPL</option>
-                        <option value="XI RPL (Rekayasa Perangkat Lunak)">XI RPL</option>
-                        <option value="XII RPL (Rekayasa Perangkat Lunak)">XII RPL</option>
-                        <option value="X TKR (Teknik Kendaraan Ringan)">X TKR</option>
-                        <option value="XI TKR (Teknik Kendaraan Ringan)">XI TKR</option>
-                        <option value="XII TKR (Teknik Kendaraan Ringan)">XII TKR</option>
-                        <option value="X AKL (Akuntansi Keuangan Lembaga)">X AKL</option>
-                        <option value="XI AKL (Akuntansi Keuangan Lembaga)">XI AKL</option>
-                        <option value="XII AKL (Akuntansi Keuangan Lembaga)">XII AKL</option>
+                        {DAFTAR_KELAS.map((kls) => (
+                          <option key={kls} value={kls}>
+                            {kls}
+                          </option>
+                        ))}
                         <option value="Guru / Staf Pendidik">Guru / Staf Pendidik</option>
                       </select>
                     </div>
@@ -1292,15 +1356,8 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({
 
           <div className="flex items-center gap-4">
             <button
-              onClick={onOpenBlueprint}
-              className="text-slate-600 hover:text-indigo-600 transition-colors"
-            >
-              Dokumentasi Arsitektur
-            </button>
-            <span>·</span>
-            <button
               onClick={onOpenLogin}
-              className="text-slate-600 hover:text-indigo-600 transition-colors"
+              className="text-slate-600 hover:text-indigo-600 transition-colors cursor-pointer"
             >
               Ruang Kendali Admin
             </button>

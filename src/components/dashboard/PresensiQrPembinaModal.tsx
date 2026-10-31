@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
+import jsPDF from 'jspdf';
+import { toJpeg } from 'html-to-image';
 import { 
   QrCode, 
   Printer, 
@@ -13,7 +15,10 @@ import {
   Clock, 
   Award,
   RefreshCw,
-  FileText
+  FileText,
+  FileDown,
+  Image as ImageIcon,
+  Loader2
 } from 'lucide-react';
 import { SchoolIdentityConfig } from '../../types/erp';
 import { INITIAL_SCHOOL_IDENTITY } from '../../data/schoolIdentityPresets';
@@ -66,6 +71,9 @@ export const PresensiQrPembinaModal: React.FC<PresensiQrPembinaModalProps> = ({
 
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copiedToken, setCopiedToken] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isGeneratingImg, setIsGeneratingImg] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState('');
   const printAreaRef = useRef<HTMLDivElement>(null);
 
   const generateNewToken = () => {
@@ -107,14 +115,119 @@ export const PresensiQrPembinaModal: React.FC<PresensiQrPembinaModalProps> = ({
     window.print();
   };
 
+  // Unduh Barcode QR saja
   const handleDownloadQr = () => {
     if (!qrDataUrl) return;
     const link = document.createElement('a');
     link.href = qrDataUrl;
-    link.download = `QR-Presensi-OSIS-${jenisPresensi.replace(/\s+/g, '_')}-${tanggal}.png`;
+    link.download = `QR-Presensi-Barcode-Saja-${jenisPresensi.replace(/\s+/g, '_')}-${tanggal}.png`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // Unduh Poster Lengkap sebagai Gambar HD (JPG)
+  const handleDownloadPosterImage = async () => {
+    const posterEl = document.getElementById('print-poster-container');
+    if (!posterEl) {
+      alert('Elemen poster tidak ditemukan.');
+      return;
+    }
+
+    try {
+      setIsGeneratingImg(true);
+      setFeedbackMsg('Merender poster presensi ke gambar HD...');
+      const dataUrl = await toJpeg(posterEl, {
+        quality: 0.95,
+        backgroundColor: '#ffffff',
+        pixelRatio: 2.5,
+        skipFonts: true,
+      });
+
+      const fileName = `POSTER_PRESENSI_QR_${identity.singkatan}_${jenisPresensi.replace(/\s+/g, '_')}_${tanggal}.jpg`;
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setFeedbackMsg('Gambar Poster Berhasil Diunduh!');
+    } catch (err) {
+      console.error('Gagal mengunduh gambar poster:', err);
+      alert('Gagal membuat gambar poster presensi.');
+    } finally {
+      setTimeout(() => {
+        setIsGeneratingImg(false);
+        setFeedbackMsg('');
+      }, 1000);
+    }
+  };
+
+  // Unduh Poster Lengkap sebagai Dokumen PDF (A4 Siap Print)
+  const handleDownloadPosterPdf = async () => {
+    const posterEl = document.getElementById('print-poster-container');
+    if (!posterEl) {
+      alert('Elemen poster tidak ditemukan.');
+      return;
+    }
+
+    try {
+      setIsGeneratingPdf(true);
+      setFeedbackMsg('Merender poster presensi ke lembar PDF A4...');
+      const imgData = await toJpeg(posterEl, {
+        quality: 0.95,
+        backgroundColor: '#ffffff',
+        pixelRatio: 2.5,
+        skipFonts: true,
+      });
+
+      const img = new Image();
+      img.src = imgData;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Gagal memuat render poster'));
+      });
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Hitung skala agar pas di tengah halaman A4 dengan margin proporsional
+      const margin = 15;
+      const targetWidth = pageWidth - (margin * 2);
+      const targetHeight = (img.height * targetWidth) / img.width;
+
+      // Jika lebih tinggi dari A4, skala ulang berdasarkan tinggi
+      let finalWidth = targetWidth;
+      let finalHeight = targetHeight;
+      if (finalHeight > (pageHeight - (margin * 2))) {
+        finalHeight = pageHeight - (margin * 2);
+        finalWidth = (img.width * finalHeight) / img.height;
+      }
+
+      const xOffset = (pageWidth - finalWidth) / 2;
+      const yOffset = (pageHeight - finalHeight) / 2;
+
+      pdf.addImage(imgData, 'JPEG', xOffset, yOffset, finalWidth, finalHeight);
+
+      const fileName = `POSTER_PRESENSI_QR_${identity.singkatan}_${jenisPresensi.replace(/\s+/g, '_')}_${tanggal}.pdf`;
+      pdf.save(fileName);
+      setFeedbackMsg('File PDF Berhasil Diunduh!');
+    } catch (err) {
+      console.error('Gagal membuat PDF poster:', err);
+      alert('Gagal membuat PDF otomatis. Mengalihkan ke dialog print browser...');
+      window.print();
+    } finally {
+      setTimeout(() => {
+        setIsGeneratingPdf(false);
+        setFeedbackMsg('');
+      }, 1000);
+    }
   };
 
   const handleCopyToken = () => {
@@ -174,16 +287,49 @@ export const PresensiQrPembinaModal: React.FC<PresensiQrPembinaModalProps> = ({
               </div>
             </div>
 
-            <button
-              onClick={onClose}
-              className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold transition-colors"
-            >
-              ✕
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Quick Download PDF */}
+              <button
+                type="button"
+                onClick={handleDownloadPosterPdf}
+                disabled={isGeneratingPdf || isGeneratingImg}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 disabled:opacity-50"
+                title="Unduh Lembar Poster PDF Siap Cetak A4"
+              >
+                {isGeneratingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+                <span>Unduh PDF</span>
+              </button>
+
+              {/* Quick Download Gambar */}
+              <button
+                type="button"
+                onClick={handleDownloadPosterImage}
+                disabled={isGeneratingPdf || isGeneratingImg}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95 disabled:opacity-50"
+                title="Unduh Gambar HD Poster Presensi"
+              >
+                {isGeneratingImg ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                <span>Unduh Gambar</span>
+              </button>
+
+              <button
+                onClick={onClose}
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-sm font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Modal Body */}
           <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
+            {feedbackMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-950 rounded-2xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{feedbackMsg}</span>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Column: Pengaturan Sesi Presensi */}
               <div className="lg:col-span-5 space-y-4">
@@ -277,33 +423,71 @@ export const PresensiQrPembinaModal: React.FC<PresensiQrPembinaModalProps> = ({
                   </div>
                 </div>
 
-                {/* Print & Download Action Buttons */}
+                {/* Print & Download Action Buttons (Lengkap: PDF, Gambar, Print) */}
                 <div className="space-y-2 pt-1">
+                  <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    Pilihan Ekspor & Cetak Lembar Presensi:
+                  </div>
+
+                  {/* 1. Unduh File PDF */}
                   <button
                     type="button"
-                    onClick={handlePrint}
-                    className="w-full min-h-[46px] py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-200 active:scale-95"
+                    onClick={handleDownloadPosterPdf}
+                    disabled={isGeneratingPdf || isGeneratingImg}
+                    className="w-full min-h-[46px] py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-200 active:scale-95 disabled:opacity-50"
                   >
-                    <Printer className="w-4 h-4" />
-                    <span>Cetak Poster QR Code (Print / PDF)</span>
+                    {isGeneratingPdf ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Menyusun File PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileDown className="w-4 h-4" />
+                        <span>1. Unduh Poster PDF Siap Cetak (A4)</span>
+                      </>
+                    )}
                   </button>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  {/* 2. Unduh Gambar Poster HD */}
+                  <button
+                    type="button"
+                    onClick={handleDownloadPosterImage}
+                    disabled={isGeneratingPdf || isGeneratingImg}
+                    className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-200 active:scale-95 disabled:opacity-50"
+                  >
+                    {isGeneratingImg ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Menyimpan Gambar HD...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon className="w-4 h-4" />
+                        <span>2. Unduh Gambar Poster (HD JPG / Gambar)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* 3. Baris Tombol Tambahan: Print Langsung & Barcode Saja */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handlePrint}
+                      className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-slate-300" />
+                      <span>Cetak Dialog</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleDownloadQr}
-                      className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors active:scale-95"
+                      className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors active:scale-95 border border-slate-200"
+                      title="Unduh file barcode QR murni tanpa poster"
                     >
                       <Download className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Unduh Gambar QR</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCopyToken}
-                      className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors active:scale-95"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Salin Token Acara</span>
+                      <span>QR Saja (PNG)</span>
                     </button>
                   </div>
                 </div>
@@ -311,7 +495,7 @@ export const PresensiQrPembinaModal: React.FC<PresensiQrPembinaModalProps> = ({
                 <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 leading-relaxed flex items-start gap-2">
                   <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                   <span>
-                    <strong>Tips Penempelan:</strong> Cetak poster ini lalu tempelkan di ruang piket atau depan pintu lobi sekolah. Pengurus OSIS cukup membuka kamera di Portal Pengurus untuk langsung scan.
+                    <strong>Tips Penempelan:</strong> Anda bisa mengunduh file <strong>PDF</strong> atau <strong>Gambar</strong> di atas untuk dikirim ke grup WhatsApp pengurus atau langsung dicetak di printer sekolah.
                   </span>
                 </div>
               </div>
@@ -328,17 +512,17 @@ export const PresensiQrPembinaModal: React.FC<PresensiQrPembinaModalProps> = ({
                   id="print-poster-container"
                   className="w-full max-w-md bg-white border-4 border-slate-900 rounded-3xl p-6 sm:p-7 shadow-xl text-slate-900 flex flex-col items-center text-center space-y-4"
                 >
-                  {/* Kop Poster Resmi */}
+                  {/* Kop Poster Resmi dengan Logo Sekolah */}
                   <div className="w-full pb-3 border-b-2 border-slate-800 flex items-center justify-between gap-3 text-left">
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0 p-1">
+                    <div className="w-13 h-13 rounded-2xl bg-white border-2 border-amber-400/80 flex items-center justify-center overflow-hidden shrink-0 p-1 shadow-xs">
                       {identity.logoUrl ? (
-                        <img src={identity.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                        <img src={identity.logoUrl} alt="Logo Sekolah" className="w-full h-full object-contain" />
                       ) : (
                         <span className="font-black text-indigo-700 text-xs">{identity.singkatan}</span>
                       )}
                     </div>
                     <div className="flex-1">
-                      <div className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">
+                      <div className="text-[9.5px] font-mono tracking-widest text-slate-500 uppercase font-bold">
                         SISTEM PRESENSI RESMI ORGANISASI SISWA
                       </div>
                       <h4 className="text-xs sm:text-sm font-black text-slate-900 uppercase leading-tight">

@@ -77,17 +77,31 @@ export default function App() {
   // Persistent States
   const [accounts, setAccounts] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('td_erp_accounts');
-    return saved ? JSON.parse(saved) : INITIAL_ACCOUNTS;
+    if (!saved) return INITIAL_ACCOUNTS;
+    try {
+      const parsed: UserAccount[] = JSON.parse(saved);
+      const hasLegacyClass = parsed.some(a => /TKJ|RPL|TKR|AKL|DKV|Logistik/i.test(a.kelas));
+      return hasLegacyClass ? INITIAL_ACCOUNTS : parsed;
+    } catch {
+      return INITIAL_ACCOUNTS;
+    }
   });
 
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     const saved = localStorage.getItem('td_erp_current_user');
-    return saved ? JSON.parse(saved) : INITIAL_ACCOUNTS[0]; // Default Bapak Ilham Arief, S.Pd.
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>(() => {
     const saved = localStorage.getItem('td_erp_org_members');
-    return saved ? JSON.parse(saved) : INITIAL_ORG_MEMBERS;
+    if (!saved) return INITIAL_ORG_MEMBERS;
+    try {
+      const parsed: OrgMember[] = JSON.parse(saved);
+      const hasLegacyClass = parsed.some(m => /TKJ|RPL|TKR|AKL|DKV|Logistik/i.test(m.kelas));
+      return hasLegacyClass ? INITIAL_ORG_MEMBERS : parsed;
+    } catch {
+      return INITIAL_ORG_MEMBERS;
+    }
   });
 
   const [prokerList, setProkerList] = useState<ProgramKerja[]>(() => {
@@ -132,7 +146,14 @@ export default function App() {
 
   const [aspirasiList, setAspirasiList] = useState<AspirasiSiswa[]>(() => {
     const saved = localStorage.getItem('td_erp_aspirasi');
-    return saved ? JSON.parse(saved) : INITIAL_ASPIRASI;
+    if (!saved) return INITIAL_ASPIRASI;
+    try {
+      const parsed: AspirasiSiswa[] = JSON.parse(saved);
+      const hasLegacyClass = parsed.some(a => /TKJ|RPL|TKR|AKL|DKV/i.test(a.kelasPengirim));
+      return hasLegacyClass ? INITIAL_ASPIRASI : parsed;
+    } catch {
+      return INITIAL_ASPIRASI;
+    }
   });
 
   const [galeriList, setGaleriList] = useState<GaleriKegiatan[]>(() => {
@@ -505,9 +526,16 @@ export default function App() {
     }
   };
 
-  // Render Blueprint Screen
+  // Render Blueprint Screen (Khusus Pembina & Admin yang terotorisasi)
   if (appMode === 'blueprint') {
-    return <BlueprintDocument onBackToApp={() => setAppMode('public')} />;
+    return (
+      <BlueprintDocument
+        onBackToApp={() => {
+          setAppMode('dashboard');
+          setDashboardView('jendela1');
+        }}
+      />
+    );
   }
 
   // Render Public Portal
@@ -524,8 +552,6 @@ export default function App() {
           aspirasiList={aspirasiList}
           onAddAspirasi={handleAddAspirasi}
           onOpenLogin={() => setShowLoginModal(true)}
-          onOpenBlueprint={() => setAppMode('blueprint')}
-          onOpenVercelGuide={() => setShowVercelGuideModal(true)}
         />
 
         {showLoginModal && (
@@ -536,15 +562,31 @@ export default function App() {
             onCancel={() => setShowLoginModal(false)}
           />
         )}
+      </>
+    );
+  }
 
-        {showVercelGuideModal && (
-          <VercelDatabaseGuideModal
-            isOpen={showVercelGuideModal}
-            onClose={() => setShowVercelGuideModal(false)}
-            onExportAllData={handleExportAllData}
-            onImportData={handleImportData}
-          />
-        )}
+  // Guard: Jika mode dashboard tetapi belum login, arahkan ke login modal di portal publik
+  if (appMode === 'dashboard' && !currentUser) {
+    return (
+      <>
+        <PublicPortal
+          schoolIdentity={schoolIdentity}
+          prokerList={prokerList}
+          orgMembers={orgMembers}
+          sekbidList={sekbidList}
+          galeriList={galeriList}
+          heroBanners={heroBanners}
+          aspirasiList={aspirasiList}
+          onAddAspirasi={handleAddAspirasi}
+          onOpenLogin={() => setShowLoginModal(true)}
+        />
+        <LoginModal
+          accounts={accounts}
+          schoolIdentity={schoolIdentity}
+          onLoginSuccess={handleLoginSuccess}
+          onCancel={() => setShowLoginModal(false)}
+        />
       </>
     );
   }
@@ -575,24 +617,13 @@ export default function App() {
           onUpdateProker={(updPrk) => {
             setProkerList(prokerList.map((p) => (p.id === updPrk.id ? updPrk : p)));
           }}
-          onSwitchUser={(user) => {
-            setCurrentUser(user);
-          }}
           onLogout={() => {
+            setCurrentUser(null);
+            localStorage.removeItem('td_erp_current_user');
             setAppMode('public');
           }}
           onOpenPublicPortal={() => setAppMode('public')}
-          onOpenVercelGuide={() => setShowVercelGuideModal(true)}
         />
-
-        {showVercelGuideModal && (
-          <VercelDatabaseGuideModal
-            isOpen={showVercelGuideModal}
-            onClose={() => setShowVercelGuideModal(false)}
-            onExportAllData={handleExportAllData}
-            onImportData={handleImportData}
-          />
-        )}
       </>
     );
   }
@@ -607,8 +638,9 @@ export default function App() {
         systemModules={systemModules}
         schoolIdentity={schoolIdentity}
         onSelectView={setDashboardView}
-        onSwitchUser={(user) => setCurrentUser(user)}
         onLogout={() => {
+          setCurrentUser(null);
+          localStorage.removeItem('td_erp_current_user');
           setAppMode('public');
         }}
         onOpenPublicPortal={() => setAppMode('public')}
@@ -621,6 +653,8 @@ export default function App() {
             currentUser={currentUser || accounts[0]}
             accounts={accounts}
             orgMembers={orgMembers}
+            presensiList={presensiList}
+            transaksiList={transaksiList}
             sekbidList={sekbidList}
             onAddSekbid={handleAddSekbid}
             onUpdateSekbid={handleUpdateSekbid}
@@ -655,6 +689,21 @@ export default function App() {
               setOrgMembers(orgMembers.filter((m) => m.id !== id));
             }}
             onViewPublicPortal={() => setAppMode('public')}
+            onOpenVercelGuide={() => setShowVercelGuideModal(true)}
+            onOpenBlueprint={() => setAppMode('blueprint')}
+            onBulkAddMembers={(newAccs, newMems) => {
+              const createdAccs: UserAccount[] = newAccs.map((acc, i) => ({
+                ...acc,
+                id: `usr-${Date.now()}-${i}`,
+                createdAt: new Date().toISOString().split('T')[0],
+              }));
+              const createdMems: OrgMember[] = newMems.map((mem, i) => ({
+                ...mem,
+                id: `org-${Date.now()}-${i}`,
+              }));
+              setAccounts((prev) => [...prev, ...createdAccs]);
+              setOrgMembers((prev) => [...prev, ...createdMems]);
+            }}
           />
         )}
 

@@ -1,8 +1,19 @@
 import React, { useState } from 'react';
-import { UserAccount, OrgMember, UserRole, SchoolIdentityConfig, OSIS_SEKBID_LIST, SekbidDefinition } from '../../types/erp';
+import { 
+  UserAccount, 
+  OrgMember, 
+  UserRole, 
+  SchoolIdentityConfig, 
+  OSIS_SEKBID_LIST, 
+  SekbidDefinition,
+  PresensiRecord,
+  TransaksiKas 
+} from '../../types/erp';
 import { VOCATIONAL_IMAGE_PRESETS } from '../../data/imagePresets';
 import { INITIAL_SCHOOL_IDENTITY } from '../../data/schoolIdentityPresets';
+import { DAFTAR_KELAS } from '../../data/classList';
 import { SchoolLogoManager } from './SchoolLogoManager';
+import { DashboardAnalyticsRecharts } from './DashboardAnalyticsRecharts';
 import { 
   Users, 
   UserPlus, 
@@ -34,13 +45,26 @@ import {
   Copy,
   Check,
   Printer,
-  QrCode
+  QrCode,
+  Cloud,
+  FileText,
+  FileSpreadsheet,
+  Download,
+  CreditCard,
+  BarChart3,
+  GraduationCap,
+  BookOpen
 } from 'lucide-react';
+import { BulkExcelImportModal } from './BulkExcelImportModal';
+import { KartuTandaAnggotaModal } from './KartuTandaAnggotaModal';
+import { downloadExcelTemplate } from '../../utils/excelTemplateGenerator';
 
 interface ControlRoomJendela1Props {
   currentUser: UserAccount;
   accounts: UserAccount[];
   orgMembers: OrgMember[];
+  presensiList?: PresensiRecord[];
+  transaksiList?: TransaksiKas[];
   sekbidList?: SekbidDefinition[];
   onAddSekbid?: (sekbid: SekbidDefinition) => void;
   onUpdateSekbid?: (sekbid: SekbidDefinition, oldNomor?: number) => void;
@@ -54,12 +78,20 @@ interface ControlRoomJendela1Props {
   onUpdateOrgMember: (member: OrgMember) => void;
   onDeleteOrgMember: (id: string) => void;
   onViewPublicPortal: () => void;
+  onOpenVercelGuide?: () => void;
+  onOpenBlueprint?: () => void;
+  onBulkAddMembers?: (
+    newAccounts: Omit<UserAccount, 'id' | 'createdAt'>[],
+    newOrgMembers: Omit<OrgMember, 'id'>[]
+  ) => void;
 }
 
 export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
   currentUser,
   accounts,
   orgMembers,
+  presensiList = [],
+  transaksiList = [],
   sekbidList,
   onAddSekbid,
   onUpdateSekbid,
@@ -73,11 +105,14 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
   onUpdateOrgMember,
   onDeleteOrgMember,
   onViewPublicPortal,
+  onOpenVercelGuide,
+  onOpenBlueprint,
+  onBulkAddMembers,
 }) => {
   const currentSekbids = sekbidList && sekbidList.length > 0 ? sekbidList : OSIS_SEKBID_LIST;
 
-  const [activeTab, setActiveTab] = useState<'accounts' | 'structure' | 'identity'>('accounts');
-  const [structureFilter, setStructureFilter] = useState<'sekbid' | 'bph' | 'semua'>('sekbid');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'accounts' | 'structure' | 'pembina_guru' | 'identity'>('analytics');
+  const [structureFilter, setStructureFilter] = useState<'sekbid' | 'bph' | 'pembina_guru' | 'semua'>('sekbid');
   const [selectedSekbidNomor, setSelectedSekbidNomor] = useState<number | 'semua'>('semua');
   const [searchMemberQuery, setSearchMemberQuery] = useState('');
   const [selectedAccountToFill, setSelectedAccountToFill] = useState<string>('');
@@ -100,6 +135,22 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
     password: string;
   } | null>(null);
   const [copiedAccountWa, setCopiedAccountWa] = useState(false);
+
+  // Bulk Word Import & KTA States
+  const [showBulkImportModal, setShowBulkImportModal] = useState(false);
+  const [showKtaModal, setShowKtaModal] = useState(false);
+
+  const handleCommitBulkMembers = (
+    newAccs: Omit<UserAccount, 'id' | 'createdAt'>[],
+    newMems: Omit<OrgMember, 'id'>[]
+  ) => {
+    if (onBulkAddMembers) {
+      onBulkAddMembers(newAccs, newMems);
+    } else {
+      newAccs.forEach((acc) => onAddAccount(acc));
+      newMems.forEach((mem) => onAddOrgMember(mem));
+    }
+  };
 
   // Form Org Member State
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -197,6 +248,106 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
     }
   };
 
+  // =========================================================================
+  // DEWAN GURU PEMBINA SEKBID STATES & HANDLERS
+  // =========================================================================
+  const [showGuruPembinaModal, setShowGuruPembinaModal] = useState(false);
+  const [editingGuruPembina, setEditingGuruPembina] = useState<OrgMember | null>(null);
+  const [guruNama, setGuruNama] = useState('');
+  const [guruNip, setGuruNip] = useState('');
+  const [guruSekbidNomor, setGuruSekbidNomor] = useState<number>(1);
+  const [guruMataPelajaran, setGuruMataPelajaran] = useState('');
+  const [guruKontak, setGuruKontak] = useState('');
+  const [guruVisi, setGuruVisi] = useState('');
+  const [guruFotoUrl, setGuruFotoUrl] = useState(VOCATIONAL_IMAGE_PRESETS[11].url);
+
+  const handleOpenAddGuruPembina = (presetSekbidNo?: number) => {
+    setEditingGuruPembina(null);
+    const targetNo = presetSekbidNo || 1;
+    setGuruSekbidNomor(targetNo);
+    const matched = currentSekbids.find((s) => s.nomor === targetNo);
+    setGuruNama('');
+    setGuruNip('');
+    setGuruMataPelajaran('');
+    setGuruKontak('');
+    setGuruVisi(
+      `Membimbing dan mengawal pelaksanaan program kerja Sekbid ${targetNo} (${matched?.singkatan || ''}) agar berdaya guna dan profesional bagi siswa SMK Tridharma Gorontalo.`
+    );
+    setGuruFotoUrl(VOCATIONAL_IMAGE_PRESETS[11].url);
+    setShowGuruPembinaModal(true);
+  };
+
+  const handleOpenEditGuruPembina = (guru: OrgMember) => {
+    setEditingGuruPembina(guru);
+    setGuruSekbidNomor(guru.sekbidNomor || 1);
+    setGuruNama(guru.nama);
+    setGuruNip(guru.nip || '');
+    setGuruMataPelajaran(guru.mataPelajaran || '');
+    setGuruKontak(guru.kontak || '');
+    setGuruVisi(guru.visiSingkat || '');
+    setGuruFotoUrl(guru.fotoUrl || VOCATIONAL_IMAGE_PRESETS[11].url);
+    setShowGuruPembinaModal(true);
+  };
+
+  const handleSaveGuruPembina = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guruNama.trim()) return;
+
+    const matchedSekbid = currentSekbids.find((s) => s.nomor === Number(guruSekbidNomor));
+    const sekbidLabel = matchedSekbid ? `${matchedSekbid.singkatan}` : `Sekbid ${guruSekbidNomor}`;
+    const generatedJabatan = `Guru Pembina Sekbid ${guruSekbidNomor} (${sekbidLabel})`;
+
+    if (editingGuruPembina) {
+      onUpdateOrgMember({
+        ...editingGuruPembina,
+        nama: guruNama.trim(),
+        jabatan: generatedJabatan,
+        kategori: 'pembina',
+        peranSekbid: 'pembina_guru',
+        sekbidNomor: Number(guruSekbidNomor),
+        sekbidNama: matchedSekbid?.nama || '',
+        kelas: 'Dewan Guru Pembina',
+        nip: guruNip.trim() || '-',
+        mataPelajaran: guruMataPelajaran.trim() || 'Guru Pembimbing',
+        kontak: guruKontak.trim() || '-',
+        visiSingkat: guruVisi.trim(),
+        fotoUrl: guruFotoUrl.trim() || VOCATIONAL_IMAGE_PRESETS[11].url,
+      });
+    } else {
+      onAddOrgMember({
+        nama: guruNama.trim(),
+        jabatan: generatedJabatan,
+        kategori: 'pembina',
+        peranSekbid: 'pembina_guru',
+        sekbidNomor: Number(guruSekbidNomor),
+        sekbidNama: matchedSekbid?.nama || '',
+        kelas: 'Dewan Guru Pembina',
+        nip: guruNip.trim() || '-',
+        mataPelajaran: guruMataPelajaran.trim() || 'Guru Pembimbing',
+        kontak: guruKontak.trim() || '-',
+        visiSingkat: guruVisi.trim(),
+        fotoUrl: guruFotoUrl.trim() || VOCATIONAL_IMAGE_PRESETS[11].url,
+        urutan: 2,
+      });
+    }
+
+    setShowGuruPembinaModal(false);
+    setEditingGuruPembina(null);
+  };
+
+  const handleGuruPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setGuruFotoUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSelectAccountForAutofill = (accId: string) => {
     setSelectedAccountToFill(accId);
     if (!accId) return;
@@ -286,7 +437,7 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
 
   const handleOpenAddAccount = () => {
     setFullName('');
-    setKelas('XI RPL 1');
+    setKelas('XI Askep');
     setJabatan('Koordinator Sekbid 1 (Ketaqwaan)');
     setUsername('');
     const rand = Math.floor(100 + Math.random() * 900);
@@ -493,21 +644,105 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
             </p>
           </div>
 
-          <button
-            onClick={onViewPublicPortal}
-            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium flex items-center gap-2 transition-colors whitespace-nowrap shadow-sm"
-          >
-            <span>Cek Tampilan Publik</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {onOpenVercelGuide && (
+              <button
+                type="button"
+                onClick={onOpenVercelGuide}
+                className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap shadow-sm border border-sky-400/40 active:scale-95 cursor-pointer"
+                title="Panduan Hosting Vercel & Sinkronisasi Database Cloud (Supabase/Firebase)"
+              >
+                <Cloud className="w-4 h-4 text-sky-200" />
+                <span>Hosting & Cloud DB</span>
+                <span className="text-[9px] bg-sky-950/80 text-sky-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                  PEMBINA
+                </span>
+              </button>
+            )}
+
+            {onOpenBlueprint && (
+              <button
+                type="button"
+                onClick={onOpenBlueprint}
+                className="px-3.5 py-2 bg-indigo-900/90 hover:bg-indigo-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap shadow-sm border border-indigo-400/40 active:scale-95 cursor-pointer"
+                title="Dokumentasi Arsitektur Sistem, ERD Database & Cetak Biru Teknis (Khusus Pembina)"
+              >
+                <Layers className="w-4 h-4 text-indigo-300" />
+                <span>Blueprint Sistem</span>
+                <span className="text-[9px] bg-indigo-950/80 text-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                  PEMBINA
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowKtaModal(true)}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all whitespace-nowrap shadow-sm border border-emerald-400/40 active:scale-95 cursor-pointer"
+              title="Cetak & Unduh Kartu Tanda Anggota (KTA) OSIS"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-200" />
+              <span>Kartu Anggota (KTA)</span>
+              <span className="text-[9px] bg-emerald-950/80 text-emerald-200 px-1.5 py-0.5 rounded font-mono font-bold">
+                PRINT
+              </span>
+            </button>
+
+            <button
+              onClick={onViewPublicPortal}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap shadow-sm cursor-pointer"
+            >
+              <span>Cek Tampilan Publik</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3 overflow-x-auto scrollbar-thin">
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer ${
+            activeTab === 'analytics'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <BarChart3 className="w-3.5 h-3.5" />
+          <span>Visualisasi Data & Tren (Recharts)</span>
+          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
+            activeTab === 'analytics' ? 'bg-indigo-800 text-white' : 'bg-emerald-100 text-emerald-800'
+          }`}>
+            LIVE
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('pembina_guru')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer ${
+            activeTab === 'pembina_guru'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <GraduationCap className="w-3.5 h-3.5" />
+          <span>Dewan Guru Pembina Sekbid</span>
+          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full font-mono ${
+            activeTab === 'pembina_guru' ? 'bg-indigo-800 text-white' : 'bg-purple-100 text-purple-800'
+          }`}>
+            {orgMembers.filter(
+              (m) =>
+                m.peranSekbid === 'pembina_guru' ||
+                (m.kategori === 'pembina' && m.sekbidNomor) ||
+                m.jabatan.toLowerCase().includes('guru pembina')
+            ).length} Guru
+          </span>
+        </button>
+
         <button
           onClick={() => setActiveTab('accounts')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'accounts'
               ? 'bg-indigo-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -519,7 +754,7 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
 
         <button
           onClick={() => setActiveTab('structure')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'structure'
               ? 'bg-indigo-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -531,7 +766,7 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
 
         <button
           onClick={() => setActiveTab('identity')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors ${
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors whitespace-nowrap cursor-pointer ${
             activeTab === 'identity'
               ? 'bg-indigo-600 text-white shadow-xs'
               : 'text-slate-600 hover:bg-slate-100'
@@ -545,6 +780,242 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
         </button>
       </div>
 
+      {/* TAB 0: RECHARTS DATA VISUALIZATION */}
+      {activeTab === 'analytics' && (
+        <DashboardAnalyticsRecharts
+          presensiList={presensiList}
+          transaksiList={transaksiList}
+          accounts={accounts}
+          orgMembers={orgMembers}
+          schoolIdentity={currentIdentity}
+        />
+      )}
+
+      {/* TAB: DEWAN GURU PEMBINA SEKSI BIDANG */}
+      {activeTab === 'pembina_guru' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header Card */}
+          <div className="bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 rounded-3xl p-6 text-white border border-purple-500/30 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-purple-300 text-xs font-mono mb-1.5">
+                <GraduationCap className="w-4 h-4 text-purple-300" />
+                <span>DEWAN GURU PENDAMPING & PEMBINA SEKBID</span>
+              </div>
+              <h3 className="text-xl font-bold tracking-tight text-white">
+                Dewan Guru Pembina di Setiap Seksi Bidang
+              </h3>
+              <p className="text-xs text-purple-200/80 mt-1 max-w-2xl leading-relaxed">
+                Kelola para bapak/ibu guru yang bertindak sebagai pembina teknis dan pendamping moral bagi pengurus di masing-masing Seksi Bidang (Sekbid 1 s.d. 8). Nama dan profil guru pembina akan tampil secara resmi di Bagan Struktur Organisasi Portal Publik.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleOpenAddGuruPembina()}
+              className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-purple-600/30 whitespace-nowrap active:scale-95 cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Tambah Guru Pembina Sekbid</span>
+            </button>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                <GraduationCap className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase">Guru Pembina Terdaftar</div>
+                <div className="text-xl font-black text-slate-900 font-mono">
+                  {orgMembers.filter(
+                    (m) =>
+                      m.peranSekbid === 'pembina_guru' ||
+                      (m.kategori === 'pembina' && m.sekbidNomor) ||
+                      m.jabatan.toLowerCase().includes('guru pembina')
+                  ).length}{' '}
+                  <span className="text-xs font-normal text-slate-500">Guru</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                <Layers className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase">Sekbid Memiliki Pembina</div>
+                <div className="text-xl font-black text-indigo-700 font-mono">
+                  {
+                    currentSekbids.filter((s) =>
+                      orgMembers.some(
+                        (m) =>
+                          (m.peranSekbid === 'pembina_guru' ||
+                            (m.kategori === 'pembina' && m.sekbidNomor) ||
+                            m.jabatan.toLowerCase().includes('guru pembina')) &&
+                          m.sekbidNomor === s.nomor
+                      )
+                    ).length
+                  }{' '}
+                  <span className="text-xs font-normal text-slate-500">/ {currentSekbids.length} Bidang</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                <Shield className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase">Pembina Utama OSIS</div>
+                <div className="text-xs font-bold text-slate-900 mt-0.5 truncate">
+                  Bpk. Ilham Arief, S.Pd.
+                </div>
+                <div className="text-[10px] text-slate-500 font-mono">NIP 198504122011011008</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sekbid Advisory Cards Grid (Sekbid 1 s.d. 8) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {currentSekbids.map((sek) => {
+              const assignedGurus = orgMembers.filter(
+                (m) =>
+                  (m.peranSekbid === 'pembina_guru' ||
+                    (m.kategori === 'pembina' && m.sekbidNomor) ||
+                    m.jabatan.toLowerCase().includes('guru pembina')) &&
+                  m.sekbidNomor === sek.nomor
+              );
+
+              return (
+                <div
+                  key={sek.nomor}
+                  className="bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-purple-300 transition-all overflow-hidden flex flex-col justify-between"
+                >
+                  <div className="p-4 sm:p-5">
+                    {/* Header Sekbid Badge */}
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-lg bg-purple-100 text-purple-800 font-mono font-bold text-xs flex items-center justify-center">
+                          #{sek.nomor}
+                        </span>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">{sek.nama}</div>
+                          <div className="text-[10px] text-slate-500 font-semibold">{sek.singkatan}</div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddGuruPembina(sek.nomor)}
+                        className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Tugaskan Guru</span>
+                      </button>
+                    </div>
+
+                    {/* Assigned Gurus List */}
+                    {assignedGurus.length > 0 ? (
+                      <div className="space-y-3">
+                        {assignedGurus.map((guru) => (
+                          <div
+                            key={guru.id}
+                            className="bg-gradient-to-br from-purple-50/50 to-indigo-50/30 rounded-xl p-3.5 border border-purple-100 flex items-start justify-between gap-3"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-slate-900 border border-purple-200 overflow-hidden shrink-0 shadow-2xs">
+                                {guru.fotoUrl ? (
+                                  <img
+                                    src={guru.fotoUrl}
+                                    alt={guru.nama}
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center font-bold text-white text-xs bg-purple-700">
+                                    {guru.nama.slice(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-slate-900 leading-snug">
+                                  {guru.nama}
+                                </div>
+                                <div className="text-[11px] font-semibold text-purple-700 mt-0.5">
+                                  {guru.mataPelajaran || 'Guru Pembina Sekbid'}
+                                </div>
+                                {guru.nip && (
+                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                    NIP: {guru.nip}
+                                  </div>
+                                )}
+                                {guru.kontak && guru.kontak !== '-' && (
+                                  <div className="text-[10px] text-slate-600 mt-0.5 flex items-center gap-1">
+                                    <Phone className="w-3 h-3 text-emerald-600" />
+                                    <span>{guru.kontak}</span>
+                                  </div>
+                                )}
+                                {guru.visiSingkat && (
+                                  <p className="text-[11px] text-slate-600 italic mt-2 pt-1.5 border-t border-purple-100/80">
+                                    "{guru.visiSingkat}"
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditGuruPembina(guru)}
+                                className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-white transition-colors"
+                                title="Edit Data Guru Pembina"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Hapus ${guru.nama} dari Pembina Sekbid ${sek.nomor}?`)) {
+                                    onDeleteOrgMember(guru.id);
+                                  }
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white transition-colors"
+                                title="Hapus Guru Pembina"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center">
+                        <GraduationCap className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
+                        <div className="text-xs font-semibold text-slate-600">
+                          Belum Ada Guru Pembina Ditugaskan
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Tugaskan guru mata pelajaran/kejuruan untuk mendampingi Sekbid {sek.nomor}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddGuruPembina(sek.nomor)}
+                          className="mt-2.5 px-3 py-1.5 bg-white border border-purple-300 hover:bg-purple-50 text-purple-700 rounded-lg text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Pilih & Tugaskan Guru Sekarang</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* TAB 1: ACCOUNTS */}
       {activeTab === 'accounts' && (
         <div className="space-y-4">
@@ -556,13 +1027,45 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
               </p>
             </div>
 
-            <button
-              onClick={handleOpenAddAccount}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors shadow-xs"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Daftarkan Pengurus Baru</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => downloadExcelTemplate(currentIdentity?.namaSekolah || 'SMK TRIDHARMA GORONTALO')}
+                className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors border border-emerald-300 shadow-2xs cursor-pointer active:scale-95"
+                title="Unduh Formulir Template Excel (.xlsx) untuk diisi offline dengan panduan 7 kelas"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Unduh Template Excel (.xlsx)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowBulkImportModal(true)}
+                className="px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors border border-teal-200 shadow-2xs cursor-pointer active:scale-95"
+                title="Impor banyak siswa sekaligus dari file Excel (.xlsx / .xls)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" />
+                <span>Impor Massal Excel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowKtaModal(true)}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer active:scale-95"
+                title="Pratinjau, Cetak & Unduh Kartu Tanda Anggota (KTA) OSIS"
+              >
+                <CreditCard className="w-3.5 h-3.5 text-white" />
+                <span>Cetak KTA OSIS</span>
+              </button>
+
+              <button
+                onClick={handleOpenAddAccount}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors shadow-xs active:scale-95 cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Daftarkan 1 Pengurus</span>
+              </button>
+            </div>
           </div>
 
           {/* Accounts Table */}
@@ -682,11 +1185,12 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
 
               <button
                 type="button"
-                onClick={() => handleOpenAddMember('sekbid', 'koordinator')}
-                className="min-h-[42px] px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs active:scale-95"
+                onClick={() => setShowKtaModal(true)}
+                className="min-h-[42px] px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs active:scale-95 cursor-pointer"
+                title="Cetak Kartu Tanda Anggota (KTA) OSIS"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>+ Posisi Struktur</span>
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                <span>Cetak KTA OSIS</span>
               </button>
             </div>
           </div>
@@ -1329,30 +1833,22 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
                 />
               </div>
 
-              {/* Field 2: Kelas / Jurusan */}
+              {/* Field 2: Kelas Siswa (7 Kelas Resmi) */}
               <div>
                 <label className="block font-semibold text-slate-800 mb-1.5 flex items-center justify-between">
-                  <span>2. Kelas / Jurusan Siswa</span>
-                  <span className="text-[10px] text-slate-500">Pilih cepat atau ketik</span>
+                  <span>2. Kelas Siswa (SMK Tridharma)</span>
+                  <span className="text-[10px] text-slate-500">Pilih salah satu dari 7 kelas resmi</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={kelas}
-                  onChange={(e) => setKelas(e.target.value)}
-                  placeholder="Contoh: XI RPL 1 atau X TKJ 2"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium mb-2"
-                />
-                {/* Chip Pilihan Cepat Kelas SMK Tridharma */}
-                <div className="flex flex-wrap gap-1.5">
-                  {['X RPL 1', 'X TKJ 1', 'X TKR 1', 'XI RPL 1', 'XI TKJ 1', 'XI TKR 1', 'XI AKL 1', 'XII RPL 1', 'XII TKJ 1'].map((k) => (
+                {/* Chip Pilihan Cepat 7 Kelas SMK Tridharma */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {DAFTAR_KELAS.map((k) => (
                     <button
                       key={k}
                       type="button"
                       onClick={() => setKelas(k)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                         kelas === k
-                          ? 'bg-indigo-600 text-white font-semibold'
+                          ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-400'
                           : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                       }`}
                     >
@@ -1360,6 +1856,14 @@ export const ControlRoomJendela1: React.FC<ControlRoomJendela1Props> = ({
                     </button>
                   ))}
                 </div>
+                <input
+                  type="text"
+                  required
+                  value={kelas}
+                  onChange={(e) => setKelas(e.target.value)}
+                  placeholder="Pilih dari tombol kelas di atas atau ketik"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all font-medium"
+                />
               </div>
 
               {/* Field 3: Jabatan Organisasi */}
@@ -1792,14 +2296,26 @@ _Pembina OSIS SMK Tridharma Gorontalo_`;
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Kelas / Jurusan Vokasi</label>
+                  <label className="block font-bold text-slate-700 mb-1">Kelas Siswa (SMK Tridharma)</label>
+                  <select
+                    value={DAFTAR_KELAS.includes(memberKelas as any) ? memberKelas : ''}
+                    onChange={(e) => {
+                      if (e.target.value) setMemberKelas(e.target.value);
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500 font-semibold mb-1.5"
+                  >
+                    <option value="">-- Pilih dari 7 Kelas Resmi --</option>
+                    {DAFTAR_KELAS.map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
                   <input
                     type="text"
                     required
                     value={memberKelas}
                     onChange={(e) => setMemberKelas(e.target.value)}
-                    placeholder="Contoh: X RPL / XI TKJ 1"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500"
+                    placeholder="Contoh: X Askep 1, XI Farmasi"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-indigo-500 text-sm font-medium"
                   />
                 </div>
                 <div>
@@ -2059,6 +2575,217 @@ _Pembina OSIS SMK Tridharma Gorontalo_`;
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL TAMBAH / EDIT GURU PEMBINA SEKBID */}
+      {showGuruPembinaModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3.5 sm:p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto shadow-2xl border border-purple-200 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-700">
+                  <GraduationCap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                    {editingGuruPembina ? 'Edit Data Guru Pembina Sekbid' : 'Tambah Guru Pembina Sekbid Baru'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Dewan guru yang membina dan mendampingi pelaksanaan program kerja Sekbid OSIS.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGuruPembinaModal(false);
+                  setEditingGuruPembina(null);
+                }}
+                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveGuruPembina} className="space-y-3.5 text-xs">
+              {/* Field 1: Seksi Bidang Binaan */}
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Pilih Seksi Bidang yang Dibina <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={guruSekbidNomor}
+                  onChange={(e) => setGuruSekbidNomor(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-semibold focus:outline-none focus:border-purple-600 focus:bg-white"
+                >
+                  {currentSekbids.map((s) => (
+                    <option key={s.nomor} value={s.nomor}>
+                      Sekbid {s.nomor}: {s.singkatan} ({s.nama})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Field 2: Nama Lengkap Guru & Gelar */}
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Nama Lengkap & Gelar Guru <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={guruNama}
+                  onChange={(e) => setGuruNama(e.target.value)}
+                  placeholder="Contoh: Dra. Hj. Nurhidayah Daud, M.Pd."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-semibold focus:outline-none focus:border-purple-600 focus:bg-white text-sm"
+                />
+              </div>
+
+              {/* Field 3: NIP & Mata Pelajaran */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    NIP Guru (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={guruNip}
+                    onChange={(e) => setGuruNip(e.target.value)}
+                    placeholder="197405102000032004"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-mono text-xs focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-800 mb-1">
+                    Mata Pelajaran / Posisi
+                  </label>
+                  <input
+                    type="text"
+                    value={guruMataPelajaran}
+                    onChange={(e) => setGuruMataPelajaran(e.target.value)}
+                    placeholder="Contoh: Guru Farmakologi / Agama"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Field 4: No WhatsApp */}
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Nomor Kontak / WhatsApp
+                </label>
+                <input
+                  type="text"
+                  value={guruKontak}
+                  onChange={(e) => setGuruKontak(e.target.value)}
+                  placeholder="0812-xxxx-xxxx"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                />
+              </div>
+
+              {/* Field 5: Foto Guru */}
+              <div className="p-3 bg-purple-50/50 rounded-2xl border border-purple-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 text-xs">Foto Profil Guru Pembina:</label>
+                  <label className="cursor-pointer px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors">
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Unggah File</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={handleGuruPhotoUpload}
+                    />
+                  </label>
+                </div>
+
+                {/* Preset Foto Guru */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  {VOCATIONAL_IMAGE_PRESETS.slice(8, 16).map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setGuruFotoUrl(preset.url)}
+                      className={`w-9 h-9 rounded-xl overflow-hidden border-2 shrink-0 transition-transform ${
+                        guruFotoUrl === preset.url ? 'border-purple-600 scale-110 shadow-sm' : 'border-slate-300 opacity-80 hover:opacity-100'
+                      }`}
+                      title={preset.title}
+                    >
+                      <img src={preset.url} alt="preset" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+
+                <input
+                  type="text"
+                  value={guruFotoUrl}
+                  onChange={(e) => setGuruFotoUrl(e.target.value)}
+                  placeholder="URL Foto Guru..."
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-[11px] font-mono text-slate-800 focus:outline-none"
+                />
+              </div>
+
+              {/* Field 6: Arahan / Visi Pembinaan */}
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Pesan Visi / Arahan Pembinaan
+                </label>
+                <textarea
+                  rows={2}
+                  value={guruVisi}
+                  onChange={(e) => setGuruVisi(e.target.value)}
+                  placeholder="Arahan guru untuk memotivasi anggota sekbid dalam bertugas..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-purple-600 focus:bg-white"
+                ></textarea>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGuruPembinaModal(false);
+                    setEditingGuruPembina(null);
+                  }}
+                  className="min-h-[40px] px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="min-h-[40px] px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all shadow-md shadow-purple-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  <span>{editingGuruPembina ? 'Simpan Perubahan Guru' : 'Simpan Guru Pembina'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL IMPOR MASSAL DARI EXCEL */}
+      {showBulkImportModal && (
+        <BulkExcelImportModal
+          isOpen={showBulkImportModal}
+          onClose={() => setShowBulkImportModal(false)}
+          existingAccounts={accounts}
+          sekbidList={currentSekbids}
+          schoolName={currentIdentity?.namaSekolah || 'SMK TRIDHARMA GORONTALO'}
+          onCommitBulkMembers={handleCommitBulkMembers}
+        />
+      )}
+
+      {/* MODAL KARTU TANDA ANGGOTA (KTA) */}
+      {showKtaModal && (
+        <KartuTandaAnggotaModal
+          isOpen={showKtaModal}
+          onClose={() => setShowKtaModal(false)}
+          orgMembers={orgMembers}
+          accounts={accounts}
+          sekbidList={currentSekbids}
+          schoolIdentity={currentIdentity}
+        />
       )}
     </div>
   );

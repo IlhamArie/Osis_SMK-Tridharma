@@ -34,7 +34,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const target = accounts.find(
       (acc) =>
         acc.username.toLowerCase() === username.trim().toLowerCase() &&
-        (acc.password === password.trim() || password.trim() === 'admin' || password.trim() === '123456')
+        acc.password === password.trim()
     );
 
     if (target) {

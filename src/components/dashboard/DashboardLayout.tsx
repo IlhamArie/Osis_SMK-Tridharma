@@ -44,7 +44,7 @@ interface DashboardLayoutProps {
   systemModules: SystemModulesConfig;
   schoolIdentity?: SchoolIdentityConfig;
   onSelectView: (view: DashboardView) => void;
-  onSwitchUser: (user: UserAccount) => void;
+  onSwitchUser?: (user: UserAccount) => void;
   onLogout: () => void;
   onOpenPublicPortal: () => void;
   onOpenBlueprint: () => void;
@@ -355,10 +355,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             <div className="space-y-1 pt-2 border-t border-slate-900">
               <button
                 onClick={onOpenBlueprint}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-900 transition-colors"
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-900 transition-colors cursor-pointer"
+                title="Dokumentasi Arsitektur Teknis & Database Blueprint (Khusus Pembina)"
               >
-                <Layers className="w-4 h-4 text-indigo-400" />
-                <span>Dokumentasi Arsitektur</span>
+                <div className="flex items-center gap-2.5">
+                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <span>Blueprint Arsitektur</span>
+                </div>
+                <span className="text-[9px] font-mono bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded font-bold">
+                  PEMBINA
+                </span>
               </button>
 
               <button
@@ -424,23 +430,20 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               </button>
             )}
 
-            {/* User Account Switcher */}
-            <div className="pt-1.5 border-t border-slate-800/80">
-              <label className="text-[10px] text-slate-400 block mb-1">Beralih Akun Pengurus:</label>
-              <select
-                value={currentUser.id}
-                onChange={(e) => {
-                  const targetUser = allAccounts.find((a) => a.id === e.target.value);
-                  if (targetUser) onSwitchUser(targetUser);
-                }}
-                className="w-full text-[11px] bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none"
+            {/* Authenticated Session Status */}
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Sesi Terverifikasi</span>
+              </span>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                title="Keluar untuk berganti akun pengurus lain"
               >
-                {allAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.fullName} ({acc.role.toUpperCase()})
-                  </option>
-                ))}
-              </select>
+                Ganti Akun
+              </button>
             </div>
           </div>
         </div>

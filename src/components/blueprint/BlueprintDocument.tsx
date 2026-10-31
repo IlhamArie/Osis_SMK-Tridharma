@@ -48,9 +48,9 @@ export const BlueprintDocument: React.FC<BlueprintDocumentProps> = ({ onBackToAp
         <div className="flex items-center gap-3">
           <button
             onClick={onBackToApp}
-            className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors flex items-center gap-2 shadow-sm shadow-indigo-900/50"
+            className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-indigo-900/50 cursor-pointer active:scale-95"
           >
-            <span>Buka Aplikasi ERP Live</span>
+            <span>Kembali ke Ruang Kendali Pembina</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
         </div>
